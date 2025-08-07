@@ -11,8 +11,8 @@ interface IClobPair {
     event OrderPlaced(bytes32 indexed orderHash, OrderStructs.LimitOrder order);
     event OrderCancelled(bytes32 indexed orderHash, address indexed maker);
     event Trade(
-        bytes32 indexed baseToken,
-        bytes32 indexed quoteToken,
+        address indexed baseToken,
+        address indexed quoteToken,
         address indexed maker,
         address taker,
         uint128 baseAmount,
@@ -39,3 +39,4 @@ interface IClobPair {
     function getPairInfo() external view returns (address baseToken, address quoteToken, uint256 tickSize);
     function getVault() external view returns (address vault);
 }
+
