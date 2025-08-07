@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
 /**
@@ -13,13 +13,13 @@ library OrderStructs {
      */
     struct LimitOrder {
         address maker;           // Address placing the order
-        address baseToken;       // Base token address (e.g., ETH)
-        address quoteToken;      // Quote token address (e.g., USDC)
-        uint256 baseAmount;      // Amount of base token
-        uint256 quoteAmount;     // Amount of quote token
-        uint256 price;           // Price per base token unit
+        address baseToken;       // Base token address (smaller address)
+        address quoteToken;      // Quote token address (larger address)
+        uint256 baseAmount;      // Amount of base token to sell
+        uint256 quoteAmount;     // Amount of quote token to receive
+        uint256 price;           // Price (quote per base)
         uint256 tickSize;        // Minimum price increment
-        bool isBuy;              // true = buy order, false = sell order
+        bool isSellBase;         // true = sell base, false = sell quote
         uint256 expiry;          // Order expiration timestamp
         uint256 salt;            // Random number for uniqueness
         uint256 nonce;           // User's nonce for order uniqueness
@@ -30,10 +30,10 @@ library OrderStructs {
      */
     struct MarketOrder {
         address maker;
-        address baseToken;
-        address quoteToken;
-        uint256 amount;          // Amount to buy/sell
-        bool isBuy;
+        address baseToken;       // Base token address (smaller address)
+        address quoteToken;      // Quote token address (larger address)
+        uint256 amount;          // Amount of token to sell
+        bool isSellBase;         // true = sell base, false = sell quote
         uint256 maxSlippage;     // Maximum acceptable slippage (basis points)
         uint256 expiry;
         uint256 salt;
@@ -67,16 +67,6 @@ library OrderStructs {
         uint256 price;
         uint256 timestamp;
         uint256 blockNumber;
-    }
-
-    /**
-     * @notice Structure for order book levels (price levels)
-     */
-    struct OrderBookLevel {
-        uint256 price;           // Price of this level
-        uint256 totalAmount;     // Total amount at this price level
-        uint256 orderCount;      // Number of orders at this level
-        bytes32[] orderHashes;   // Array of order hashes at this level
     }
 
     /**
