@@ -17,8 +17,10 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // State variables
+    // userAddress => tokenAddress => amount
     mapping(address => mapping(address => uint256)) private _userBalances;
     mapping(address => mapping(address => uint256)) private _lockedBalances;
+    // executorAddress => isAuthorized
     mapping(address => bool) public authorizedExecutors;
     mapping(address => bool) public supportedTokens;
 
@@ -49,8 +51,8 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
         require(token != address(0), "Vault: invalid token");
         require(amount > 0, "Vault: amount must be positive");
 
-        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
         _userBalances[msg.sender][token] += amount;
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
 
         emit Deposited(msg.sender, token, amount);
     }
@@ -71,11 +73,8 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
         emit Withdrawn(msg.sender, token, amount);
     }
 
-    /**
-     * @notice Batch deposit multiple tokens
-     * @param tokens Array of token addresses
-     * @param amounts Array of amounts to deposit
-     */
+    ///@notice Batch deposit multiple tokens
+
     function batchDeposit(address[] calldata tokens, uint256[] calldata amounts) external override nonReentrant whenNotPaused {
         require(tokens.length == amounts.length, "Vault: array length mismatch");
         require(tokens.length > 0, "Vault: empty token");
@@ -114,10 +113,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
     }
 
     ///@notice Lock user balance for trading
-    function lockBalance(address user, address token, uint256 amount) external override onlyExecutor {
-        require(user != address(0), "Vault: invalid user");
-        require(token != address(0), "Vault: invalid token");
-        require(amount > 0, "Vault: amount must be positive");
+    function lockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused{
         require(_userBalances[user][token] >= amount, "Vault: insufficient balance");
 
         _userBalances[user][token] -= amount;
@@ -125,65 +121,34 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
     }
 
     ///@notice Unlock user balance
-    function unlockBalance(address user, address token, uint256 amount) external override onlyExecutor {
-        require(user != address(0), "Vault: invalid user");
-        require(token != address(0), "Vault: invalid token");
-        require(amount > 0, "Vault: amount must be positive");
+    function unlockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused{
         require(_lockedBalances[user][token] >= amount, "Vault: insufficient locked balance");
 
         _lockedBalances[user][token] -= amount;
         _userBalances[user][token] += amount;
     }
 
-    /**
-     * @notice Execute transfer between users (for trade settlement)
-     * @param from The sender address
-     * @param to The recipient address
-     * @param token The token address
-     * @param amount The amount to transfer
-     */
+    ///@notice Execute transfer between users (for trade settlement)
     function executeTransfer(
         address from,
         address to,
         address token,
         uint256 amount
-    ) external override onlyExecutor {
-        require(from != address(0), "Vault: invalid from address");
-        require(to != address(0), "Vault: invalid to address");
-        require(token != address(0), "Vault: invalid token");
-        require(amount > 0, "Vault: amount must be positive");
+    ) external override onlyExecutor whenNotPaused{
         require(_lockedBalances[from][token] >= amount, "Vault: insufficient locked balance");
 
         _lockedBalances[from][token] -= amount;
         _userBalances[to][token] += amount;
     }
 
-    /**
-     * @notice Get user's total balance (available + locked)
-     * @param user The user address
-     * @param token The token address
-     * @return totalBalance The total balance
-     */
     function getTotalBalance(address user, address token) external view override returns (uint256 totalBalance) {
         return _userBalances[user][token] + _lockedBalances[user][token];
     }
 
-    /**
-     * @notice Get user's available balance for trading
-     * @param user The user address
-     * @param token The token address
-     * @return availableBalance The available balance
-     */
     function getAvailableBalance(address user, address token) external view override returns (uint256 availableBalance) {
         return _userBalances[user][token];
     }
 
-    /**
-     * @notice Get user's locked balance in active orders
-     * @param user The user address
-     * @param token The token address
-     * @return lockedBalance The locked balance
-     */
     function getLockedBalance(address user, address token) external view override returns (uint256 lockedBalance) {
         return _lockedBalances[user][token];
     }
