@@ -56,4 +56,21 @@ interface IRouter {
      * @return factoryAddress Address of the ClobFactory contract
      */
     function getFactory() external view returns (address factoryAddress);
+
+    /**
+     * @notice Returns EIP-712 domain separator used for hashing & signing
+     */
+    function domainSeparator() external view returns (bytes32);
+
+    /**
+     * @notice Compute typed data hash for a limit order (struct hash -> digest)
+     * @dev Equivalent to keccak256("\x19\x01" || domainSeparator || structHash(order))
+     */
+    function hashOrder(OrderStructs.LimitOrder calldata order) external view returns (bytes32);
+
+    /**
+     * @notice Cancel by order hash without passing full struct (if stored mapping exists)
+     * @param orderHash The order hash to cancel
+     */
+    function cancelOrderByHash(bytes32 orderHash) external;
 }

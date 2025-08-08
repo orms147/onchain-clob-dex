@@ -9,7 +9,7 @@ interface IClobFactory {
 
     event ClobPairCreated(address indexed clobPair, address indexed baseToken, address indexed quoteToken, uint256 tickSize);
 
-    /// @notice Create a new ClobPair for trading
+    /// @notice Create a new ClobPair for trading (tokens will be canonicalized: lower address becomes base)
     function createClobPair(address baseToken, address quoteToken, uint256 tickSize) external returns (address clobPair);
 
     /// @notice Get the address of an existing ClobPair
@@ -27,4 +27,7 @@ interface IClobFactory {
 
     /// @notice Compute unique key for a trading pair
     function computePairKey(address baseToken, address quoteToken, uint256 tickSize) external pure returns (bytes32 key);
+
+    /// @notice Vault used by all pairs
+    function getVault() external view returns (address vault);
 }

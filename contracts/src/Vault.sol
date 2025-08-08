@@ -118,6 +118,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
 
         _userBalances[user][token] -= amount;
         _lockedBalances[user][token] += amount;
+        emit BalanceLocked(user, token, amount);
     }
 
     ///@notice Unlock user balance
@@ -126,6 +127,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
 
         _lockedBalances[user][token] -= amount;
         _userBalances[user][token] += amount;
+        emit BalanceUnlocked(user, token, amount);
     }
 
     ///@notice Execute transfer between users (for trade settlement)
@@ -139,6 +141,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
 
         _lockedBalances[from][token] -= amount;
         _userBalances[to][token] += amount;
+    emit TransferExecuted(from, to, token, amount);
     }
 
     function getTotalBalance(address user, address token) external view override returns (uint256 totalBalance) {
@@ -151,6 +154,14 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
 
     function getLockedBalance(address user, address token) external view override returns (uint256 lockedBalance) {
         return _lockedBalances[user][token];
+    }
+
+    function isSupportedToken(address token) external view override returns (bool) {
+        return supportedTokens[token];
+    }
+
+    function isExecutor(address executor) external view override returns (bool) {
+        return authorizedExecutors[executor];
     }
 
     // Authorization functions

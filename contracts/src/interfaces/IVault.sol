@@ -9,6 +9,9 @@ interface IVault {
     
     event Deposited(address indexed user, address indexed token, uint256 amount);
     event Withdrawn(address indexed user, address indexed token, uint256 amount);
+    event BalanceLocked(address indexed user, address indexed token, uint256 amount);
+    event BalanceUnlocked(address indexed user, address indexed token, uint256 amount);
+    event TransferExecuted(address indexed from, address indexed to, address indexed token, uint256 amount);
 
     /// @notice Deposit tokens into vault
     function deposit(address token, uint256 amount) external;
@@ -33,6 +36,11 @@ interface IVault {
     function getAvailableBalance(address user, address token) external view returns (uint256 availableBalance);
     /// @notice Get user's locked balance in active orders
     function getLockedBalance(address user, address token) external view returns (uint256 lockedBalance);
+
+    /// @notice Check if a token is supported
+    function isSupportedToken(address token) external view returns (bool);
+    /// @notice Check if an address is an authorized executor
+    function isExecutor(address executor) external view returns (bool);
 
 
     /// @notice Authorize/revoke executor permissions
