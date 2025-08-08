@@ -40,6 +40,11 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
         _;
     }
 
+    modifier nonZeroAmount(uint256 amount) {
+        require(amount > 0, "Vault: amount must be positive");
+        _;
+    }
+
     constructor() Ownable(msg.sender) {}
 
     /**
@@ -47,9 +52,8 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
      * @param token The token address to deposit
      * @param amount The amount to deposit
      */
-    function deposit(address token, uint256 amount) external override nonReentrant whenNotPaused onlySupportedToken(token) {
+    function deposit(address token, uint256 amount) external override nonReentrant whenNotPaused onlySupportedToken(token) nonZeroAmount(amount) {
         require(token != address(0), "Vault: invalid token");
-        require(amount > 0, "Vault: amount must be positive");
 
         _userBalances[msg.sender][token] += amount;
         IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
@@ -62,9 +66,8 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
      * @param token The token address to withdraw
      * @param amount The amount to withdraw
      */
-    function withdraw(address token, uint256 amount) external override nonReentrant whenNotPaused {
+    function withdraw(address token, uint256 amount) external override nonReentrant whenNotPaused nonZeroAmount(amount) {
         require(token != address(0), "Vault: invalid token");
-        require(amount > 0, "Vault: amount must be positive");
         require(_userBalances[msg.sender][token] >= amount, "Vault: insufficient balance");
 
         _userBalances[msg.sender][token] -= amount;
@@ -113,7 +116,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
     }
 
     ///@notice Lock user balance for trading
-    function lockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused{
+    function lockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused onlySupportedToken(token) nonZeroAmount(amount) {
         require(_userBalances[user][token] >= amount, "Vault: insufficient balance");
 
         _userBalances[user][token] -= amount;
@@ -122,7 +125,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
     }
 
     ///@notice Unlock user balance
-    function unlockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused{
+    function unlockBalance(address user, address token, uint256 amount) external override onlyExecutor whenNotPaused onlySupportedToken(token) nonZeroAmount(amount) {
         require(_lockedBalances[user][token] >= amount, "Vault: insufficient locked balance");
 
         _lockedBalances[user][token] -= amount;
@@ -136,12 +139,14 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
         address to,
         address token,
         uint256 amount
-    ) external override onlyExecutor whenNotPaused{
+    ) external override onlyExecutor whenNotPaused {
+        require(amount > 0, "Vault: amount must be positive");
         require(_lockedBalances[from][token] >= amount, "Vault: insufficient locked balance");
 
         _lockedBalances[from][token] -= amount;
         _userBalances[to][token] += amount;
-    emit TransferExecuted(from, to, token, amount);
+        
+        emit TransferExecuted(from, to, token, amount);
     }
 
     function getTotalBalance(address user, address token) external view override returns (uint256 totalBalance) {
@@ -182,7 +187,9 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
      */
     function revokeExecutor(address executor) external override onlyOwner {
         require(executor != address(0), "Vault: invalid executor address");
-        authorizedExecutors[executor] = false;
+        if (authorizedExecutors[executor]) {
+            authorizedExecutors[executor] = false;
+        }
     }
 
     // Token management
@@ -193,6 +200,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
      */
     function addSupportedToken(address token) external override onlyOwner {
         require(token != address(0), "Vault: invalid token address");
+        require(!supportedTokens[token], "Vault: already supported");
         supportedTokens[token] = true;
     }
 
@@ -202,6 +210,7 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
      */
     function removeSupportedToken(address token) external override onlyOwner {
         require(token != address(0), "Vault: invalid token address");
+        require(supportedTokens[token], "Vault: not supported");
         supportedTokens[token] = false;
     }
 
@@ -231,7 +240,6 @@ contract Vault is IVault, Ownable, Pausable, ReentrancyGuard {
         require(token != address(0), "Vault: invalid token");
         require(to != address(0), "Vault: invalid recipient");
         require(amount > 0, "Vault: amount must be positive");
-
         IERC20(token).safeTransfer(to, amount);
     }
 }
