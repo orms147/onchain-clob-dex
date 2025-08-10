@@ -7,7 +7,7 @@ pragma solidity ^0.8.26;
  */
 interface IClobFactory {
 
-    event ClobPairCreated(address indexed clobPair, address indexed baseToken, address indexed quoteToken, uint256 tickSize);
+    event PairCreated(address indexed baseToken, address indexed quoteToken, uint256 tickSize, address clobPair);
 
     /// @notice Create a new ClobPair for trading (tokens will be canonicalized: lower address becomes base)
     function createClobPair(address baseToken, address quoteToken, uint256 tickSize) external returns (address clobPair);
@@ -17,9 +17,6 @@ interface IClobFactory {
 
     /// @notice Get all deployed ClobPair addresses
     function getAllPairs() external view returns (address[] memory pairs);
-
-    /// @notice Check if a ClobPair exists
-    function isPairExisted(address baseToken, address quoteToken, uint256 tickSize) external view returns (bool exists);
 
     /// @notice Get total number of created pairs
     /// @return count Total pair count
