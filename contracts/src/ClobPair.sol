@@ -397,10 +397,10 @@ contract ClobPair is IClobPair, ReentrancyGuard {
                 
                 // Unlock expired order's funds
                 if (expiredNode.isSellBase) {
-                    IVault(vault).unlockBalance(expiredNode.maker, baseToken, expiredNode.remainingBase);
+                    IVault(vault).unlock(expiredNode.maker, baseToken, expiredNode.remainingBase);
                 } else {
                     uint128 quoteToUnlock = uint128((uint256(expiredNode.remainingBase) * expiredNode.price) / 1e18);
-                    IVault(vault).unlockBalance(expiredNode.maker, quoteToken, quoteToUnlock);
+                    IVault(vault).unlock(expiredNode.maker, quoteToken, quoteToUnlock);
                 }
                 
                 // Clean up tracking for expired order
@@ -480,13 +480,13 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         if (takerIsBuying) {
             // Taker buys base, pays quote
             // Maker sells base, receives quote
-            IVault(vault).executeTransfer(maker, taker, baseToken, baseAmount);
-            IVault(vault).executeTransfer(taker, maker, quoteToken, quoteAmount);
+            IVault(vault).moveLocked(baseToken, maker, taker, baseAmount);
+            IVault(vault).moveLocked(quoteToken, taker, maker, quoteAmount);
         } else {
             // Taker sells base, receives quote  
             // Maker buys base, pays quote
-            IVault(vault).executeTransfer(taker, maker, baseToken, baseAmount);
-            IVault(vault).executeTransfer(maker, taker, quoteToken, quoteAmount);
+            IVault(vault).moveLocked(baseToken, taker, maker, baseAmount);
+            IVault(vault).moveLocked(quoteToken, maker, taker, quoteAmount);
         }
     }
 
@@ -518,13 +518,13 @@ contract ClobPair is IClobPair, ReentrancyGuard {
 
         // Lock funds in vault
         if (order.isSellBase) {
-            IVault(vault).lockBalance(order.maker, baseToken, order.baseAmount);
+            IVault(vault).lock(order.maker, baseToken, order.baseAmount);
         } else {
             // Check overflow before calculation
             require(order.baseAmount <= type(uint128).max / order.price * 1e18, "OVERFLOW");
             uint128 quoteNeeded = uint128((uint256(order.baseAmount) * order.price) / 1e18);
             require(quoteNeeded > 0, "ZERO_QUOTE_NEEDED");
-            IVault(vault).lockBalance(order.maker, quoteToken, quoteNeeded);
+            IVault(vault).lock(order.maker, quoteToken, quoteNeeded);
         }
 
         // Try to match against existing orders
@@ -570,10 +570,10 @@ contract ClobPair is IClobPair, ReentrancyGuard {
 
         // Unlock funds
         if (node.isSellBase) {
-            IVault(vault).unlockBalance(node.maker, baseToken, node.remainingBase);
+            IVault(vault).unlock(node.maker, baseToken, node.remainingBase);
         } else {
             uint128 quoteToUnlock = uint128((uint256(node.remainingBase) * node.price) / 1e18);
-            IVault(vault).unlockBalance(node.maker, quoteToken, quoteToUnlock);
+            IVault(vault).unlock(node.maker, quoteToken, quoteToUnlock);
         }
 
         // Clean up tracking
@@ -630,7 +630,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     }
 
     function getBestBid() external view returns (bool exists, uint256 price, uint128 totalBase) {
-        (exists, uint32 idx) = _findBestBid(0);
+        uint32 idx;
+        (exists, idx) = _findBestBid(0);
         if (exists) {
             price = uint256(idx) * tickSize;
             totalBase = bids.levels[idx].aggBase;
@@ -638,7 +639,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     }
 
     function getBestAsk() external view returns (bool exists, uint256 price, uint128 totalBase) {
-        (exists, uint32 idx) = _findBestAsk(MAX_TICK_INDEX);
+        uint32 idx;
+        (exists, idx) = _findBestAsk(MAX_TICK_INDEX);
         if (exists) {
             price = uint256(idx) * tickSize;
             totalBase = asks.levels[idx].aggBase;
