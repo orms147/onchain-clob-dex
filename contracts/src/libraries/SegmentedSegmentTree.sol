@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: -
 // License: https://license.clober.io/LICENSE.pdf
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.26;
 
 import "./PackedUint256.sol";
 import "./DirtyUint64.sol";
