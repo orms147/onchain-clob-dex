@@ -32,6 +32,9 @@ contract ClobFactory is IClobFactory {
 
         pair = address(new ClobPair(a, b, uint32(tickSize), vault));
 
+        // Authorize the new ClobPair as executor in Vault
+        IVault(vault).authorizeExecutor(pair, true);
+
         pairs[a][b][tickSize] = pair;
         pairs[b][a][tickSize] = pair; // reverse lookup allowed
         _allPairs.push(pair);
