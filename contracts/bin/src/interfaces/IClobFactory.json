@@ -1,0 +1,997 @@
+{
+    "contractName": "IClobFactory",
+    "abi": [
+        {
+            "anonymous": false,
+            "inputs": [
+                {
+                    "indexed": true,
+                    "internalType": "address",
+                    "name": "baseToken",
+                    "type": "address"
+                },
+                {
+                    "indexed": true,
+                    "internalType": "address",
+                    "name": "quoteToken",
+                    "type": "address"
+                },
+                {
+                    "indexed": false,
+                    "internalType": "uint256",
+                    "name": "tickSize",
+                    "type": "uint256"
+                },
+                {
+                    "indexed": false,
+                    "internalType": "address",
+                    "name": "clobPair",
+                    "type": "address"
+                }
+            ],
+            "name": "PairCreated",
+            "type": "event"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "baseToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "quoteToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "tickSize",
+                    "type": "uint256"
+                }
+            ],
+            "name": "computePairKey",
+            "outputs": [
+                {
+                    "internalType": "bytes32",
+                    "name": "key",
+                    "type": "bytes32"
+                }
+            ],
+            "stateMutability": "pure",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "baseToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "quoteToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "tickSize",
+                    "type": "uint256"
+                }
+            ],
+            "name": "createClobPair",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "clobPair",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "getAllPairs",
+            "outputs": [
+                {
+                    "internalType": "address[]",
+                    "name": "pairs",
+                    "type": "address[]"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [
+                {
+                    "internalType": "address",
+                    "name": "baseToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "address",
+                    "name": "quoteToken",
+                    "type": "address"
+                },
+                {
+                    "internalType": "uint256",
+                    "name": "tickSize",
+                    "type": "uint256"
+                }
+            ],
+            "name": "getClobPair",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "clobPair",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "getPairCount",
+            "outputs": [
+                {
+                    "internalType": "uint256",
+                    "name": "count",
+                    "type": "uint256"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "inputs": [],
+            "name": "getVault",
+            "outputs": [
+                {
+                    "internalType": "address",
+                    "name": "vault",
+                    "type": "address"
+                }
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ],
+    "metadata": "{\"compiler\":{\"version\":\"0.8.30+commit.73712a01\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"baseToken\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"quoteToken\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"tickSize\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"clobPair\",\"type\":\"address\"}],\"name\":\"PairCreated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"baseToken\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"quoteToken\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"tickSize\",\"type\":\"uint256\"}],\"name\":\"computePairKey\",\"outputs\":[{\"internalType\":\"bytes32\",\"name\":\"key\",\"type\":\"bytes32\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"baseToken\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"quoteToken\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"tickSize\",\"type\":\"uint256\"}],\"name\":\"createClobPair\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"clobPair\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getAllPairs\",\"outputs\":[{\"internalType\":\"address[]\",\"name\":\"pairs\",\"type\":\"address[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"baseToken\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"quoteToken\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"tickSize\",\"type\":\"uint256\"}],\"name\":\"getClobPair\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"clobPair\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getPairCount\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"count\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"getVault\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"vault\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{\"getPairCount()\":{\"returns\":{\"count\":\"Total pair count\"}}},\"title\":\"IClobFactory\",\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{\"computePairKey(address,address,uint256)\":{\"notice\":\"Compute unique key for a trading pair\"},\"createClobPair(address,address,uint256)\":{\"notice\":\"Create a new ClobPair for trading (tokens will be canonicalized: lower address becomes base)\"},\"getAllPairs()\":{\"notice\":\"Get all deployed ClobPair addresses\"},\"getClobPair(address,address,uint256)\":{\"notice\":\"Get the address of an existing ClobPair\"},\"getPairCount()\":{\"notice\":\"Get total number of created pairs\"},\"getVault()\":{\"notice\":\"Vault used by all pairs\"}},\"notice\":\"Interface for factory contract that creates and manages ClobPair contracts\",\"version\":1}},\"settings\":{\"compilationTarget\":{\"e:/Blockchain/Coding/onchain-clob-dex/contracts/src/interfaces/IClobFactory.sol\":\"IClobFactory\"},\"evmVersion\":\"prague\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\"},\"optimizer\":{\"enabled\":true,\"runs\":200},\"remappings\":[],\"viaIR\":true},\"sources\":{\"e:/Blockchain/Coding/onchain-clob-dex/contracts/src/interfaces/IClobFactory.sol\":{\"keccak256\":\"0x0363efccdfb2795f3af5c628561945abc2ae6458882d653deceb2e31aa2eb924\",\"license\":\"MIT\",\"urls\":[\"bzz-raw://bd58e930c922a32eaef485cc9c57e8d9f912ef5b7673fbb5ee006d4c1f1a4550\",\"dweb:/ipfs/Qmckg5scWk4N39PRCR86s7R8DJLbkED9FJpDdJ6JeGiQPC\"]}},\"version\":1}",
+    "bytecode": "",
+    "deployedBytecode": "",
+    "sourceMap": "",
+    "deployedSourceMap": "",
+    "sourcePath": "e:/Blockchain/Coding/onchain-clob-dex/contracts/src/interfaces/IClobFactory.sol",
+    "compiler": {
+        "name": "solc",
+        "version": "0.8.30+commit.73712a01"
+    },
+    "ast": {
+        "absolutePath": "e:/Blockchain/Coding/onchain-clob-dex/contracts/src/interfaces/IClobFactory.sol",
+        "exportedSymbols": {
+            "IClobFactory": [
+                2651
+            ]
+        },
+        "id": 2652,
+        "license": "MIT",
+        "nodeType": "SourceUnit",
+        "nodes": [
+            {
+                "id": 2584,
+                "literals": [
+                    "solidity",
+                    "^",
+                    "0.8",
+                    ".26"
+                ],
+                "nodeType": "PragmaDirective",
+                "src": "33:24:3"
+            },
+            {
+                "abstract": false,
+                "baseContracts": [],
+                "canonicalName": "IClobFactory",
+                "contractDependencies": [],
+                "contractKind": "interface",
+                "documentation": {
+                    "id": 2585,
+                    "nodeType": "StructuredDocumentation",
+                    "src": "61:119:3",
+                    "text": " @title IClobFactory\n @notice Interface for factory contract that creates and manages ClobPair contracts"
+                },
+                "fullyImplemented": false,
+                "id": 2651,
+                "linearizedBaseContracts": [
+                    2651
+                ],
+                "name": "IClobFactory",
+                "nameLocation": "192:12:3",
+                "nodeType": "ContractDefinition",
+                "nodes": [
+                    {
+                        "anonymous": false,
+                        "eventSelector": "c3168168beb4136b347bbd2afd38adb2282984cdfba1e15b86d35942f015f4ca",
+                        "id": 2595,
+                        "name": "PairCreated",
+                        "nameLocation": "220:11:3",
+                        "nodeType": "EventDefinition",
+                        "parameters": {
+                            "id": 2594,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2587,
+                                    "indexed": true,
+                                    "mutability": "mutable",
+                                    "name": "baseToken",
+                                    "nameLocation": "248:9:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2595,
+                                    "src": "232:25:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2586,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "232:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2589,
+                                    "indexed": true,
+                                    "mutability": "mutable",
+                                    "name": "quoteToken",
+                                    "nameLocation": "275:10:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2595,
+                                    "src": "259:26:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2588,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "259:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2591,
+                                    "indexed": false,
+                                    "mutability": "mutable",
+                                    "name": "tickSize",
+                                    "nameLocation": "295:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2595,
+                                    "src": "287:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_uint256",
+                                        "typeString": "uint256"
+                                    },
+                                    "typeName": {
+                                        "id": 2590,
+                                        "name": "uint256",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "287:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_uint256",
+                                            "typeString": "uint256"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2593,
+                                    "indexed": false,
+                                    "mutability": "mutable",
+                                    "name": "clobPair",
+                                    "nameLocation": "313:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2595,
+                                    "src": "305:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2592,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "305:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "231:91:3"
+                        },
+                        "src": "214:109:3"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2596,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "331:104:3",
+                            "text": "@notice Create a new ClobPair for trading (tokens will be canonicalized: lower address becomes base)"
+                        },
+                        "functionSelector": "5dfac4d5",
+                        "id": 2607,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "createClobPair",
+                        "nameLocation": "450:14:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2603,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2598,
+                                    "mutability": "mutable",
+                                    "name": "baseToken",
+                                    "nameLocation": "473:9:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2607,
+                                    "src": "465:17:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2597,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "465:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2600,
+                                    "mutability": "mutable",
+                                    "name": "quoteToken",
+                                    "nameLocation": "492:10:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2607,
+                                    "src": "484:18:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2599,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "484:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2602,
+                                    "mutability": "mutable",
+                                    "name": "tickSize",
+                                    "nameLocation": "512:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2607,
+                                    "src": "504:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_uint256",
+                                        "typeString": "uint256"
+                                    },
+                                    "typeName": {
+                                        "id": 2601,
+                                        "name": "uint256",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "504:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_uint256",
+                                            "typeString": "uint256"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "464:57:3"
+                        },
+                        "returnParameters": {
+                            "id": 2606,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2605,
+                                    "mutability": "mutable",
+                                    "name": "clobPair",
+                                    "nameLocation": "548:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2607,
+                                    "src": "540:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2604,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "540:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "539:18:3"
+                        },
+                        "scope": 2651,
+                        "src": "441:117:3",
+                        "stateMutability": "nonpayable",
+                        "virtual": false,
+                        "visibility": "external"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2608,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "566:51:3",
+                            "text": "@notice Get the address of an existing ClobPair"
+                        },
+                        "functionSelector": "18eca1b4",
+                        "id": 2619,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "getClobPair",
+                        "nameLocation": "632:11:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2615,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2610,
+                                    "mutability": "mutable",
+                                    "name": "baseToken",
+                                    "nameLocation": "652:9:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2619,
+                                    "src": "644:17:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2609,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "644:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2612,
+                                    "mutability": "mutable",
+                                    "name": "quoteToken",
+                                    "nameLocation": "671:10:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2619,
+                                    "src": "663:18:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2611,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "663:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2614,
+                                    "mutability": "mutable",
+                                    "name": "tickSize",
+                                    "nameLocation": "691:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2619,
+                                    "src": "683:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_uint256",
+                                        "typeString": "uint256"
+                                    },
+                                    "typeName": {
+                                        "id": 2613,
+                                        "name": "uint256",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "683:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_uint256",
+                                            "typeString": "uint256"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "643:57:3"
+                        },
+                        "returnParameters": {
+                            "id": 2618,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2617,
+                                    "mutability": "mutable",
+                                    "name": "clobPair",
+                                    "nameLocation": "732:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2619,
+                                    "src": "724:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2616,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "724:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "723:18:3"
+                        },
+                        "scope": 2651,
+                        "src": "623:119:3",
+                        "stateMutability": "view",
+                        "virtual": false,
+                        "visibility": "external"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2620,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "750:47:3",
+                            "text": "@notice Get all deployed ClobPair addresses"
+                        },
+                        "functionSelector": "f800ece9",
+                        "id": 2626,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "getAllPairs",
+                        "nameLocation": "812:11:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2621,
+                            "nodeType": "ParameterList",
+                            "parameters": [],
+                            "src": "823:2:3"
+                        },
+                        "returnParameters": {
+                            "id": 2625,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2624,
+                                    "mutability": "mutable",
+                                    "name": "pairs",
+                                    "nameLocation": "866:5:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2626,
+                                    "src": "849:22:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "memory",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_array$_t_address_$dyn_memory_ptr",
+                                        "typeString": "address[]"
+                                    },
+                                    "typeName": {
+                                        "baseType": {
+                                            "id": 2622,
+                                            "name": "address",
+                                            "nodeType": "ElementaryTypeName",
+                                            "src": "849:7:3",
+                                            "stateMutability": "nonpayable",
+                                            "typeDescriptions": {
+                                                "typeIdentifier": "t_address",
+                                                "typeString": "address"
+                                            }
+                                        },
+                                        "id": 2623,
+                                        "nodeType": "ArrayTypeName",
+                                        "src": "849:9:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_array$_t_address_$dyn_storage_ptr",
+                                            "typeString": "address[]"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "848:24:3"
+                        },
+                        "scope": 2651,
+                        "src": "803:70:3",
+                        "stateMutability": "view",
+                        "virtual": false,
+                        "visibility": "external"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2627,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "881:85:3",
+                            "text": "@notice Get total number of created pairs\n @return count Total pair count"
+                        },
+                        "functionSelector": "9cf2ebf5",
+                        "id": 2632,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "getPairCount",
+                        "nameLocation": "981:12:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2628,
+                            "nodeType": "ParameterList",
+                            "parameters": [],
+                            "src": "993:2:3"
+                        },
+                        "returnParameters": {
+                            "id": 2631,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2630,
+                                    "mutability": "mutable",
+                                    "name": "count",
+                                    "nameLocation": "1027:5:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2632,
+                                    "src": "1019:13:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_uint256",
+                                        "typeString": "uint256"
+                                    },
+                                    "typeName": {
+                                        "id": 2629,
+                                        "name": "uint256",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1019:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_uint256",
+                                            "typeString": "uint256"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "1018:15:3"
+                        },
+                        "scope": 2651,
+                        "src": "972:62:3",
+                        "stateMutability": "view",
+                        "virtual": false,
+                        "visibility": "external"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2633,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "1042:49:3",
+                            "text": "@notice Compute unique key for a trading pair"
+                        },
+                        "functionSelector": "411b510d",
+                        "id": 2644,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "computePairKey",
+                        "nameLocation": "1106:14:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2640,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2635,
+                                    "mutability": "mutable",
+                                    "name": "baseToken",
+                                    "nameLocation": "1129:9:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2644,
+                                    "src": "1121:17:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2634,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1121:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2637,
+                                    "mutability": "mutable",
+                                    "name": "quoteToken",
+                                    "nameLocation": "1148:10:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2644,
+                                    "src": "1140:18:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2636,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1140:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                },
+                                {
+                                    "constant": false,
+                                    "id": 2639,
+                                    "mutability": "mutable",
+                                    "name": "tickSize",
+                                    "nameLocation": "1168:8:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2644,
+                                    "src": "1160:16:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_uint256",
+                                        "typeString": "uint256"
+                                    },
+                                    "typeName": {
+                                        "id": 2638,
+                                        "name": "uint256",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1160:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_uint256",
+                                            "typeString": "uint256"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "1120:57:3"
+                        },
+                        "returnParameters": {
+                            "id": 2643,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2642,
+                                    "mutability": "mutable",
+                                    "name": "key",
+                                    "nameLocation": "1209:3:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2644,
+                                    "src": "1201:11:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_bytes32",
+                                        "typeString": "bytes32"
+                                    },
+                                    "typeName": {
+                                        "id": 2641,
+                                        "name": "bytes32",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1201:7:3",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_bytes32",
+                                            "typeString": "bytes32"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "1200:13:3"
+                        },
+                        "scope": 2651,
+                        "src": "1097:117:3",
+                        "stateMutability": "pure",
+                        "virtual": false,
+                        "visibility": "external"
+                    },
+                    {
+                        "documentation": {
+                            "id": 2645,
+                            "nodeType": "StructuredDocumentation",
+                            "src": "1222:35:3",
+                            "text": "@notice Vault used by all pairs"
+                        },
+                        "functionSelector": "8d928af8",
+                        "id": 2650,
+                        "implemented": false,
+                        "kind": "function",
+                        "modifiers": [],
+                        "name": "getVault",
+                        "nameLocation": "1272:8:3",
+                        "nodeType": "FunctionDefinition",
+                        "parameters": {
+                            "id": 2646,
+                            "nodeType": "ParameterList",
+                            "parameters": [],
+                            "src": "1280:2:3"
+                        },
+                        "returnParameters": {
+                            "id": 2649,
+                            "nodeType": "ParameterList",
+                            "parameters": [
+                                {
+                                    "constant": false,
+                                    "id": 2648,
+                                    "mutability": "mutable",
+                                    "name": "vault",
+                                    "nameLocation": "1314:5:3",
+                                    "nodeType": "VariableDeclaration",
+                                    "scope": 2650,
+                                    "src": "1306:13:3",
+                                    "stateVariable": false,
+                                    "storageLocation": "default",
+                                    "typeDescriptions": {
+                                        "typeIdentifier": "t_address",
+                                        "typeString": "address"
+                                    },
+                                    "typeName": {
+                                        "id": 2647,
+                                        "name": "address",
+                                        "nodeType": "ElementaryTypeName",
+                                        "src": "1306:7:3",
+                                        "stateMutability": "nonpayable",
+                                        "typeDescriptions": {
+                                            "typeIdentifier": "t_address",
+                                            "typeString": "address"
+                                        }
+                                    },
+                                    "visibility": "internal"
+                                }
+                            ],
+                            "src": "1305:15:3"
+                        },
+                        "scope": 2651,
+                        "src": "1263:58:3",
+                        "stateMutability": "view",
+                        "virtual": false,
+                        "visibility": "external"
+                    }
+                ],
+                "scope": 2652,
+                "src": "182:1142:3",
+                "usedErrors": [],
+                "usedEvents": [
+                    2595
+                ]
+            }
+        ],
+        "src": "33:1293:3"
+    },
+    "functionHashes": {
+        "computePairKey(address,address,uint256)": "411b510d",
+        "createClobPair(address,address,uint256)": "5dfac4d5",
+        "getAllPairs()": "f800ece9",
+        "getClobPair(address,address,uint256)": "18eca1b4",
+        "getPairCount()": "9cf2ebf5",
+        "getVault()": "8d928af8"
+    },
+    "gasEstimates": null
+}

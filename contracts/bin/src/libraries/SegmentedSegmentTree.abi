@@ -1,0 +1,1 @@
+[{"inputs":[{"internalType":"uint256","name":"errorCode","type":"uint256"}],"name":"SegmentedSegmentTreeError","type":"error"}]
