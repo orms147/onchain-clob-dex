@@ -48,9 +48,9 @@ interface IClobPair {
     function getVault() external view returns (address vault);
 
     // Best bid / ask helpers 
-    function getBestBid() external view returns (bool exists, uint256 price, uint128 totalBase);
-    function getBestAsk() external view returns (bool exists, uint256 price, uint128 totalBase);
+    function getBestBid() external view returns (bool exists, uint256 price, uint64 totalBase);
+    function getBestAsk() external view returns (bool exists, uint256 price, uint64 totalBase);
 
     // Depth query for a specific price level (aggregate remaining base amount)
-    function getPriceLevel(uint256 price) external view returns (uint128 totalBase, uint64 orderCount);
+    function getPriceLevel(uint256 price) external view returns (uint64 totalBase, uint64 orderCount);
 }
