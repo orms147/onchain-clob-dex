@@ -35,12 +35,14 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 expiry; //order expiry
         bytes32 orderHash; //order hash
     }
+    //total đã chuyển thành uint64, có nên chuyển remainingBase, price về uint64 ?
+    //order struct         uint64 nonce; expiry -> uint64 
 
     struct LevelQueue {
         uint64 head;    //head order id
         uint64 tail;    //tail order id
         uint64 length;  //number of orders in the level
-        uint128 aggBase; //total base amount in the level
+        uint64 aggBase; //total base amount in the level
         mapping(uint64 => OrderNode) orders; // orderId -> order node
     }
 
@@ -108,9 +110,20 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return isBid ? bids.levels[idx].orders[orderId] : asks.levels[idx].orders[orderId];
     }
 
-    function _updateSST(BookSide storage side, uint32 idx, uint128 aggBase) internal {
-        uint64 newValue = aggBase <= type(uint64).max ? uint64(aggBase) : type(uint64).max;
-        side.tree.update(idx, newValue);
+    //arguments: side (buy or sell), tickIndex, totalBaseAmount
+    function _updateSST(BookSide storage side, uint32 idx, uint64 aggBase) internal {
+        side.tree.update(idx, aggBase);
+    }
+
+    function _removeFromUserOrders(address user, bytes32 orderHash) internal {
+        bytes32[] storage orders = userOrders[user];
+        for(uint256 i = 0; i < orders.length; i++) {
+            if(orders[i] == orderHash) {
+                orders[i] = orders[orders.length - 1];
+                orders.pop();
+                break;
+            }
+        }
     }
 
     function _cleanupOrder(uint64 orderId, bytes32 orderHash, address maker) internal {
@@ -126,17 +139,6 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         } else {
             uint128 quoteToUnlock = uint128((uint256(node.remainingBase) * node.price) / 1e18);
             IVault(vault).unlockBalance(node.maker, quoteToken, quoteToUnlock);
-        }
-    }
-
-    function _removeFromUserOrders(address user, bytes32 orderHash) internal {
-        bytes32[] storage orders = userOrders[user];
-        for (uint256 i = 0; i < orders.length; i++) {
-            if (orders[i] == orderHash) {
-                orders[i] = orders[orders.length - 1];
-                orders.pop();
-                break;
-            }
         }
     }
 
@@ -168,7 +170,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         
         unchecked { 
             level.length += 1;
-            level.aggBase += uint128(order.baseAmount);
+            level.aggBase += uint64(order.baseAmount);
         }
 
         _updateSST(side, idx, level.aggBase);
@@ -203,7 +205,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         // Update aggregates
         unchecked {
             level.length -= 1;
-            level.aggBase -= node.remainingBase;
+            level.aggBase -= uint64(node.remainingBase);
         }
 
         delete level.orders[orderId];
@@ -211,7 +213,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return node;
     }
 
-    function _partialFill(BookSide storage side, uint32 idx, uint64 orderId, uint128 fillAmount) internal {
+    function _partialFill(BookSide storage side, uint32 idx, uint64 orderId, uint64 fillAmount) internal {
         LevelQueue storage level = side.levels[idx];
         OrderNode storage order = level.orders[orderId];
         
@@ -279,9 +281,9 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     }
 
     // ---- Matching Engine ----
-    function _matchOrder(OrderStructs.LimitOrder calldata order) internal returns (uint128 totalBaseFilled) {
+    function _matchOrder(OrderStructs.LimitOrder calldata order) internal returns (uint64 totalBaseFilled) {
         uint32 limitIdx = _tickIndex(order.price);
-        uint128 remaining = uint128(order.baseAmount);
+        uint64 remaining = uint64(order.baseAmount);
 
         if (order.isSellBase) {
             remaining = _matchAgainstBids(order.maker, remaining, limitIdx);
@@ -289,11 +291,11 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             remaining = _matchAgainstAsks(order.maker, remaining, limitIdx);
         }
 
-        return uint128(order.baseAmount) - remaining;
+        return uint64(order.baseAmount) - remaining;
     }
 
-    function _matchAgainstBids(address taker, uint128 baseToSell, uint32 minPriceIdx) 
-        internal returns (uint128 remaining) 
+    function _matchAgainstBids(address taker, uint64 baseToSell, uint32 minPriceIdx) 
+        internal returns (uint64 remaining)
     {
         remaining = baseToSell;
 
@@ -304,8 +306,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         }
     }
 
-    function _matchAgainstAsks(address taker, uint128 baseToBuy, uint32 maxPriceIdx) 
-        internal returns (uint128 remaining) 
+    function _matchAgainstAsks(address taker, uint64 baseToBuy, uint32 maxPriceIdx) 
+        internal returns (uint64 remaining)
     {
         remaining = baseToBuy;
 
@@ -316,8 +318,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         }
     }
 
-    function _fillAtLevel(BookSide storage side, uint32 idx, address taker, uint128 remaining, bool takerIsBuying) 
-        internal returns (uint128 stillRemaining) 
+    function _fillAtLevel(BookSide storage side, uint32 idx, address taker, uint64 remaining, bool takerIsBuying) 
+        internal returns (uint64 stillRemaining)
     {
         LevelQueue storage level = side.levels[idx];
         uint64 orderId = level.head;
@@ -336,7 +338,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
                 continue;
             }
 
-            uint128 fillAmount = order.remainingBase > stillRemaining ? stillRemaining : order.remainingBase;
+            uint64 fillAmount = uint64(order.remainingBase) > stillRemaining ? stillRemaining : uint64(order.remainingBase);
 
             // Execute trade
             _executeTrade(order.maker, taker, fillAmount, order.price, takerIsBuying);
@@ -371,9 +373,9 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return stillRemaining;
     }
 
-    function _executeTrade(address maker, address taker, uint128 baseAmount, uint256 price, bool takerIsBuying) internal {
+    function _executeTrade(address maker, address taker, uint64 baseAmount, uint256 price, bool takerIsBuying) internal {
         require(baseAmount > 0, "ZERO_AMOUNT");
-        uint128 quoteAmount = uint128((uint256(baseAmount) * price) / 1e18);
+        uint64 quoteAmount = uint64((uint256(baseAmount) * price) / 1e18);
         require(quoteAmount > 0, "ZERO_QUOTE");
 
         if (takerIsBuying) {
@@ -401,6 +403,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         require(order.maker == msg.sender, "INVALID_MAKER");
         require(order.baseToken == baseToken && order.quoteToken == quoteToken, "INVALID_TOKENS");
         require(order.baseAmount > 0, "ZERO_AMOUNT");
+        require(order.baseAmount <= type(uint64).max, "AMOUNT_TOO_LARGE");
         require(!_isExpired(uint64(order.expiry)), "EXPIRED");
 
         orderHash = _hashOrder(order);
@@ -410,15 +413,15 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         if (order.isSellBase) {
             IVault(vault).lockBalance(order.maker, baseToken, order.baseAmount);
         } else {
-            require(order.baseAmount <= type(uint128).max / order.price * 1e18, "OVERFLOW");
-            uint128 quoteNeeded = uint128((uint256(order.baseAmount) * order.price) / 1e18);
+            require(order.baseAmount <= type(uint64).max / order.price * 1e18, "OVERFLOW");
+            uint64 quoteNeeded = uint64((uint256(order.baseAmount) * order.price) / 1e18);
             require(quoteNeeded > 0, "ZERO_QUOTE_NEEDED");
             IVault(vault).lockBalance(order.maker, quoteToken, quoteNeeded);
         }
 
         // Try to match against existing orders
-        uint128 filledAmount = _matchOrder(order);
-        uint128 remainingAmount = uint128(order.baseAmount) - filledAmount;
+        uint64 filledAmount = _matchOrder(order);
+        uint64 remainingAmount = uint64(order.baseAmount) - filledAmount;
 
         // If there's remaining amount, add to book
         if (remainingAmount > 0) {
@@ -506,7 +509,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return vault;
     }
 
-    function getBestBid() external view returns (bool exists, uint256 price, uint128 totalBase) {
+    function getBestBid() external view returns (bool exists, uint256 price, uint64 totalBase) {
         uint32 idx;
         (exists, idx) = _findBestBid(0);
         if (exists) {
@@ -515,7 +518,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         }
     }
 
-    function getBestAsk() external view returns (bool exists, uint256 price, uint128 totalBase) {
+    function getBestAsk() external view returns (bool exists, uint256 price, uint64 totalBase) {
         uint32 idx;
         (exists, idx) = _findBestAsk(MAX_TICK_INDEX);
         if (exists) {
@@ -524,7 +527,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         }
     }
 
-    function getPriceLevel(uint256 price) external view validPrice(price) returns (uint128 totalBase, uint64 orderCount) {
+    function getPriceLevel(uint256 price) external view validPrice(price) returns (uint64 totalBase, uint64 orderCount) {
         uint32 idx = _tickIndex(price);
         LevelQueue storage bidLevel = bids.levels[idx];
         LevelQueue storage askLevel = asks.levels[idx];
