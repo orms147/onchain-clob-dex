@@ -19,56 +19,48 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     address public immutable quoteToken;
     uint32 public immutable tickSize;
     address public immutable vault;
-    address public immutable factory;
     
     // ---- Constants ----
-    uint32 private constant MAX_TICK_INDEX = 32767; // 2^15 - 1
+    uint32 private constant MAX_TICK_INDEX = 32767;
     
     // ---- Order Management ----
     struct OrderNode {
-        uint64 prev;            // prev orderId 
-        uint64 next;            // next orderId 
-        address maker;          // 
-        uint128 remainingBase;  // khối lượng base còn lại
-        uint256 price;          // giá của lệnh
-        bool isSellBase;        // true = sell base, false = buy base
-        uint64 nonce;           // nonce của maker
-        uint64 expiry;          // thời gian hết hạn
+        uint64 prev;    //prev order id
+        uint64 next;    //next order id
+        address maker;  //order maker
+        uint128 remainingBase; //remaining base amount
+        uint256 price; //order price
+        bool isSellBase; //true if sell baseToken order, false if buy
+        uint64 nonce; //order nonce
+        uint64 expiry; //order expiry
+        bytes32 orderHash; //order hash
     }
 
-    // Hàng đợi cho 1 mức giá (tick)
     struct LevelQueue {
-        uint64 head;          // orderId ở đầu hàng
-        uint64 tail;          // orderId ở cuối hàng
-        uint64 length;        // số lệnh trong hàng
-        uint128 aggBase;      // tổng base còn lại tại mức giá này
+        uint64 head;    //head order id
+        uint64 tail;    //tail order id
+        uint64 length;  //number of orders in the level
+        uint128 aggBase; //total base amount in the level
         mapping(uint64 => OrderNode) orders; // orderId -> order node
     }
 
-    // Một phía sổ lệnh (bids hoặc asks)
     struct BookSide {
-        SegmentedSegmentTree.Core tree;          // SST: leaf = aggBase của tick
-        mapping(uint32 => LevelQueue) levels;    // tickIndex -> FIFO queue
-        uint64 nextOrderId;                      // tăng dần để gán orderId
+        SegmentedSegmentTree.Core tree; //segmented segment tree for order aggregation
+        mapping(uint32 => LevelQueue) levels; //tickIndex -> level queue (FIFO)
+        uint64 nextOrderId; //next order id
     }
 
-    BookSide private bids;   // buy orders (bid side)
-    BookSide private asks;   // sell orders (ask side)
+    BookSide private bids;  //buy order
+    BookSide private asks;  //sell order
 
     // ---- Order Tracking ----
-    mapping(bytes32 => uint64) public orderHashToId;           // orderHash -> internal orderId
-    mapping(uint64 => bytes32) public orderIdToHash;           // internal orderId -> orderHash
-    mapping(uint64 => bool) public orderIsBid;                 // orderId -> true if bid, false if ask
-    mapping(uint64 => uint32) public orderTickIndex;           // orderId -> tick index
-    mapping(address => bytes32[]) private userOrders;          // user -> orderHashes[]
+    mapping(bytes32 => uint64) public orderHashToId;    //orderHash -> orderId   
+    mapping(uint64 => bool) public orderIsBid;          //orderId -> true if buy baseTkn, false if sell
+    mapping(uint64 => uint32) public orderTickIndex;   //orderId -> tickIndex
+    mapping(address => bytes32[]) private userOrders; //user -> orderHashes
 
     // ---- Constructor ----
-    constructor(
-        address _baseToken,
-        address _quoteToken,
-        uint32 _tickSize,
-        address _vault
-    ) {
+    constructor(address _baseToken, address _quoteToken, uint32 _tickSize, address _vault) {
         require(_baseToken != address(0) && _quoteToken != address(0), "ZERO_ADDRESS");
         require(_baseToken != _quoteToken, "IDENTICAL_TOKENS");
         require(_tickSize > 0, "ZERO_TICK_SIZE");
@@ -78,33 +70,22 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         quoteToken = _quoteToken;
         tickSize = _tickSize;
         vault = _vault;
-        factory = msg.sender;
     }
 
     // ---- Modifiers ----
     modifier validPrice(uint256 price) {
         require(price > 0 && price % tickSize == 0, "INVALID_PRICE");
-        uint256 tickIndex = price / tickSize;
-        require(tickIndex <= MAX_TICK_INDEX, "PRICE_TOO_HIGH");
+        require(_tickIndex(price) <= MAX_TICK_INDEX, "PRICE_TOO_HIGH"); // > 32767
         _;
     }
 
     modifier onlyMaker(bytes32 orderHash) {
-        uint64 orderId = orderHashToId[orderHash];
-        require(orderId != 0, "ORDER_NOT_FOUND");
-        
-        bool isBid = orderIsBid[orderId];
-        uint32 idx = orderTickIndex[orderId];
-        
-        OrderNode storage node = isBid ? 
-            bids.levels[idx].orders[orderId] : 
-            asks.levels[idx].orders[orderId];
-            
+        OrderNode storage node = _getOrderNode(orderHash);
         require(node.maker == msg.sender, "NOT_MAKER");
         _;
     }
 
-    // ---- Internal Helpers ----
+    // ---- Helper Functions ----
     function _tickIndex(uint256 price) internal view returns (uint32) {
         return uint32(price / tickSize);
     }
@@ -117,14 +98,53 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return expiry != 0 && block.timestamp > expiry;
     }
 
-    // ---- FIFO Queue Operations ----
-    function _enqueue(
-        BookSide storage side,
-        uint32 idx,
-        OrderStructs.LimitOrder memory order
-    ) internal returns (uint64 orderId) {
-        LevelQueue storage level = side.levels[idx];
+    function _getOrderNode(bytes32 orderHash) internal view returns (OrderNode storage node) {
+        uint64 orderId = orderHashToId[orderHash];
+        require(orderId != 0, "ORDER_NOT_FOUND");
         
+        bool isBid = orderIsBid[orderId];
+        uint32 idx = orderTickIndex[orderId];
+        
+        return isBid ? bids.levels[idx].orders[orderId] : asks.levels[idx].orders[orderId];
+    }
+
+    function _updateSST(BookSide storage side, uint32 idx, uint128 aggBase) internal {
+        uint64 newValue = aggBase <= type(uint64).max ? uint64(aggBase) : type(uint64).max;
+        side.tree.update(idx, newValue);
+    }
+
+    function _cleanupOrder(uint64 orderId, bytes32 orderHash, address maker) internal {
+        delete orderHashToId[orderHash];
+        delete orderIsBid[orderId];
+        delete orderTickIndex[orderId];
+        _removeFromUserOrders(maker, orderHash);
+    }
+
+    function _unlockFunds(OrderNode memory node) internal {
+        if (node.isSellBase) {
+            IVault(vault).unlockBalance(node.maker, baseToken, node.remainingBase);
+        } else {
+            uint128 quoteToUnlock = uint128((uint256(node.remainingBase) * node.price) / 1e18);
+            IVault(vault).unlockBalance(node.maker, quoteToken, quoteToUnlock);
+        }
+    }
+
+    function _removeFromUserOrders(address user, bytes32 orderHash) internal {
+        bytes32[] storage orders = userOrders[user];
+        for (uint256 i = 0; i < orders.length; i++) {
+            if (orders[i] == orderHash) {
+                orders[i] = orders[orders.length - 1];
+                orders.pop();
+                break;
+            }
+        }
+    }
+
+    // ---- FIFO Queue Operations ----
+    function _enqueue(BookSide storage side, uint32 idx, OrderStructs.LimitOrder memory order, bytes32 orderHash) 
+        internal returns (uint64 orderId) 
+    {
+        LevelQueue storage level = side.levels[idx];
         orderId = ++side.nextOrderId;
         OrderNode storage node = level.orders[orderId];
         
@@ -134,14 +154,13 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         node.isSellBase = order.isSellBase;
         node.nonce = uint64(order.nonce);
         node.expiry = uint64(order.expiry);
+        node.orderHash = orderHash;
 
         // Link to queue
         if (level.tail == 0) {
-            // Empty queue
             level.head = orderId;
             level.tail = orderId;
         } else {
-            // Add to tail
             node.prev = level.tail;
             level.orders[level.tail].next = orderId;
             level.tail = orderId;
@@ -152,29 +171,18 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             level.aggBase += uint128(order.baseAmount);
         }
 
-        // Update SST leaf - Sử dụng DirtyUint64 để đảm bảo đúng định dạng
-        uint64 newValue = 0;
-        if (level.aggBase <= type(uint64).max) {
-            newValue = uint64(level.aggBase);
-        } else {
-            newValue = type(uint64).max;
-        }
-        
-        side.tree.update(idx, newValue);
-        
+        _updateSST(side, idx, level.aggBase);
         return orderId;
     }
 
-    function _removeOrder(
-        BookSide storage side,
-        uint32 idx,
-        uint64 orderId
-    ) internal returns (OrderNode memory node) {
+    function _removeOrder(BookSide storage side, uint32 idx, uint64 orderId) 
+        internal returns (OrderNode memory node) 
+    {
         LevelQueue storage level = side.levels[idx];
         OrderNode storage order = level.orders[orderId];
         require(order.maker != address(0), "ORDER_NOT_FOUND");
 
-        node = order; // Copy to memory
+        node = order;
 
         uint64 prev = order.prev;
         uint64 next = order.next;
@@ -198,28 +206,12 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             level.aggBase -= node.remainingBase;
         }
 
-        // Clean up
         delete level.orders[orderId];
-
-        // Update SST - Sử dụng định dạng đúng cho SST
-        uint64 newValue = 0;
-        if (level.aggBase <= type(uint64).max) {
-            newValue = uint64(level.aggBase);
-        } else {
-            newValue = type(uint64).max;
-        }
-        
-        side.tree.update(idx, newValue);
-
+        _updateSST(side, idx, level.aggBase);
         return node;
     }
 
-    function _partialFill(
-        BookSide storage side,
-        uint32 idx,
-        uint64 orderId,
-        uint128 fillAmount
-    ) internal {
+    function _partialFill(BookSide storage side, uint32 idx, uint64 orderId, uint128 fillAmount) internal {
         LevelQueue storage level = side.levels[idx];
         OrderNode storage order = level.orders[orderId];
         
@@ -230,44 +222,17 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             level.aggBase -= fillAmount;
         }
 
-        // Update SST - Sử dụng định dạng đúng cho SST
-        uint64 newValue = 0;
-        if (level.aggBase <= type(uint64).max) {
-            newValue = uint64(level.aggBase);
-        } else {
-            newValue = type(uint64).max;
-        }
-        
-        side.tree.update(idx, newValue);
-    }
-
-    // Helper function to remove order from user list
-    function _removeFromUserOrders(address user, bytes32 orderHash) internal {
-        bytes32[] storage orders = userOrders[user];
-        for (uint256 i = 0; i < orders.length; i++) {
-            if (orders[i] == orderHash) {
-                orders[i] = orders[orders.length - 1];
-                orders.pop();
-                break;
-            }
-        }
+        _updateSST(side, idx, level.aggBase);
     }
 
     // ---- SST Extensions ----
-    // Tìm tick đầu tiên có thanh khoản > 0 trong khoảng [left, right)
-    function _findFirstNonZero(
-        SegmentedSegmentTree.Core storage tree, 
-        uint256 left, 
-        uint256 right
-    ) internal view returns (bool found, uint32 idx) {
+    function _findFirstNonZero(SegmentedSegmentTree.Core storage tree, uint256 left, uint256 right) 
+        internal view returns (bool found, uint32 idx) 
+    {
         require(left < right, "INVALID_RANGE");
         
-        // Kiểm tra nhanh xem có bất kỳ thanh khoản nào trong khoảng không
-        if (tree.query(left, right) == 0) {
-            return (false, 0);
-        }
+        if (tree.query(left, right) == 0) return (false, 0);
         
-        // Binary search để tìm non-zero leaf đầu tiên
         uint256 lo = left;
         uint256 hi = right - 1;
         
@@ -275,35 +240,25 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             uint256 mid = (lo + hi) / 2;
             
             if (tree.get(mid) > 0) {
-                // Nếu leaf hiện tại > 0, tìm bên trái nếu có thể
                 if (mid == left || tree.get(mid - 1) == 0) {
                     return (true, uint32(mid));
                 }
                 hi = mid - 1;
             } else {
-                // Nếu leaf hiện tại = 0, tìm bên phải
                 lo = mid + 1;
             }
         }
         
-        // Nếu không tìm thấy leaf > 0 nào
         return (false, 0);
     }
 
-    // Tìm tick cuối cùng có thanh khoản > 0 trong khoảng [left, right)
-    function _findLastNonZero(
-        SegmentedSegmentTree.Core storage tree, 
-        uint256 left, 
-        uint256 right
-    ) internal view returns (bool found, uint32 idx) {
+    function _findLastNonZero(SegmentedSegmentTree.Core storage tree, uint256 left, uint256 right) 
+        internal view returns (bool found, uint32 idx) 
+    {
         require(left < right, "INVALID_RANGE");
         
-        // Kiểm tra nhanh xem có bất kỳ thanh khoản nào trong khoảng không
-        if (tree.query(left, right) == 0) {
-            return (false, 0);
-        }
+        if (tree.query(left, right) == 0) return (false, 0);
         
-        // Binary search để tìm non-zero leaf cuối cùng
         uint256 lo = left;
         uint256 hi = right - 1;
         
@@ -311,78 +266,59 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             uint256 mid = (lo + hi) / 2;
             
             if (tree.get(mid) > 0) {
-                // Nếu leaf hiện tại > 0, tìm bên phải nếu có thể
                 if (mid == right - 1 || tree.get(mid + 1) == 0) {
                     return (true, uint32(mid));
                 }
                 lo = mid + 1;
             } else {
-                // Nếu leaf hiện tại = 0, tìm bên trái
                 hi = mid - 1;
             }
         }
         
-        // Nếu không tìm thấy leaf > 0 nào
         return (false, 0);
     }
 
     // ---- Matching Engine ----
-    function _matchOrder(
-        OrderStructs.LimitOrder calldata order
-    ) internal returns (uint128 totalBaseFilled) {
+    function _matchOrder(OrderStructs.LimitOrder calldata order) internal returns (uint128 totalBaseFilled) {
         uint32 limitIdx = _tickIndex(order.price);
         uint128 remaining = uint128(order.baseAmount);
 
         if (order.isSellBase) {
-            // Sell order matches against bids (buy orders)
             remaining = _matchAgainstBids(order.maker, remaining, limitIdx);
         } else {
-            // Buy order matches against asks (sell orders)  
             remaining = _matchAgainstAsks(order.maker, remaining, limitIdx);
         }
 
         return uint128(order.baseAmount) - remaining;
     }
 
-    function _matchAgainstBids(
-        address taker,
-        uint128 baseToSell,
-        uint32 minPriceIdx
-    ) internal returns (uint128 remaining) {
+    function _matchAgainstBids(address taker, uint128 baseToSell, uint32 minPriceIdx) 
+        internal returns (uint128 remaining) 
+    {
         remaining = baseToSell;
 
         while (remaining > 0) {
-            // Find best bid >= minPriceIdx
             (bool found, uint32 idx) = _findBestBid(minPriceIdx);
             if (!found) break;
-
             remaining = _fillAtLevel(bids, idx, taker, remaining, false);
         }
     }
 
-    function _matchAgainstAsks(
-        address taker,
-        uint128 baseToBuy,
-        uint32 maxPriceIdx
-    ) internal returns (uint128 remaining) {
+    function _matchAgainstAsks(address taker, uint128 baseToBuy, uint32 maxPriceIdx) 
+        internal returns (uint128 remaining) 
+    {
         remaining = baseToBuy;
 
         while (remaining > 0) {
-            // Find best ask <= maxPriceIdx
             (bool found, uint32 idx) = _findBestAsk(maxPriceIdx);
             if (!found) break;
-
             remaining = _fillAtLevel(asks, idx, taker, remaining, true);
         }
     }
 
-    function _fillAtLevel(
-        BookSide storage side,
-        uint32 idx,
-        address taker,
-        uint128 remaining,
-        bool takerIsBuying
-    ) internal returns (uint128 stillRemaining) {
+    function _fillAtLevel(BookSide storage side, uint32 idx, address taker, uint128 remaining, bool takerIsBuying) 
+        internal returns (uint128 stillRemaining) 
+    {
         LevelQueue storage level = side.levels[idx];
         uint64 orderId = level.head;
         stillRemaining = remaining;
@@ -394,45 +330,21 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             if (_isExpired(order.expiry)) {
                 uint64 nextId = order.next;
                 OrderNode memory expiredNode = _removeOrder(side, idx, orderId);
-                
-                // Unlock expired order's funds
-                if (expiredNode.isSellBase) {
-                    IVault(vault).unlockBalance(expiredNode.maker, baseToken, expiredNode.remainingBase);
-                } else {
-                    uint128 quoteToUnlock = uint128((uint256(expiredNode.remainingBase) * expiredNode.price) / 1e18);
-                    IVault(vault).unlockBalance(expiredNode.maker, quoteToken, quoteToUnlock);
-                }
-                
-                // Clean up tracking for expired order
-                bytes32 expiredHash = orderIdToHash[orderId];
-                delete orderHashToId[expiredHash];
-                delete orderIdToHash[orderId];
-                delete orderIsBid[orderId];
-                delete orderTickIndex[orderId];
-                _removeFromUserOrders(expiredNode.maker, expiredHash);
-                
+                _unlockFunds(expiredNode);
+                _cleanupOrder(orderId, expiredNode.orderHash, expiredNode.maker);
                 orderId = nextId;
                 continue;
             }
 
-            uint128 fillAmount = order.remainingBase > stillRemaining ? 
-                stillRemaining : order.remainingBase;
+            uint128 fillAmount = order.remainingBase > stillRemaining ? stillRemaining : order.remainingBase;
 
             // Execute trade
-            _executeTrade(
-                order.maker,
-                taker,
-                fillAmount,
-                order.price,
-                takerIsBuying
-            );
+            _executeTrade(order.maker, taker, fillAmount, order.price, takerIsBuying);
 
             // Emit fill event
-            bytes32 orderHash = orderIdToHash[orderId];
             bool isFinal = order.remainingBase == fillAmount;
-            
             emit OrderFilled(
-                orderHash,
+                order.orderHash,
                 order.maker,
                 taker,
                 fillAmount,
@@ -447,44 +359,27 @@ contract ClobPair is IClobPair, ReentrancyGuard {
                 // Order fully filled - remove it
                 uint64 nextId = order.next;
                 _removeOrder(side, idx, orderId);
-                
-                // Clean up tracking
-                delete orderHashToId[orderHash];
-                delete orderIdToHash[orderId];
-                delete orderIsBid[orderId];
-                delete orderTickIndex[orderId];
-                _removeFromUserOrders(order.maker, orderHash);
-                
+                _cleanupOrder(orderId, order.orderHash, order.maker);
                 orderId = nextId;
             } else {
                 // Partial fill
                 _partialFill(side, idx, orderId, fillAmount);
-                break; // Taker order fully filled
+                break;
             }
         }
 
         return stillRemaining;
     }
 
-    function _executeTrade(
-        address maker,
-        address taker,
-        uint128 baseAmount,
-        uint256 price,
-        bool takerIsBuying
-    ) internal {
+    function _executeTrade(address maker, address taker, uint128 baseAmount, uint256 price, bool takerIsBuying) internal {
         require(baseAmount > 0, "ZERO_AMOUNT");
         uint128 quoteAmount = uint128((uint256(baseAmount) * price) / 1e18);
         require(quoteAmount > 0, "ZERO_QUOTE");
 
         if (takerIsBuying) {
-            // Taker buys base, pays quote
-            // Maker sells base, receives quote
             IVault(vault).executeTransfer(maker, taker, baseToken, baseAmount);
             IVault(vault).executeTransfer(taker, maker, quoteToken, quoteAmount);
         } else {
-            // Taker sells base, receives quote  
-            // Maker buys base, pays quote
             IVault(vault).executeTransfer(taker, maker, baseToken, baseAmount);
             IVault(vault).executeTransfer(maker, taker, quoteToken, quoteAmount);
         }
@@ -492,21 +387,16 @@ contract ClobPair is IClobPair, ReentrancyGuard {
 
     // ---- SST Queries ----
     function _findBestBid(uint32 minIdx) internal view returns (bool found, uint32 idx) {
-        // Find highest price bid >= minIdx
         return _findLastNonZero(bids.tree, minIdx, MAX_TICK_INDEX + 1);
     }
 
     function _findBestAsk(uint32 maxIdx) internal view returns (bool found, uint32 idx) {
-        // Find lowest price ask <= maxIdx  
         return _findFirstNonZero(asks.tree, 0, maxIdx + 1);
     }
 
     // ---- Public Interface ----
     function placeLimitOrder(OrderStructs.LimitOrder calldata order) 
-        external 
-        nonReentrant
-        validPrice(order.price)
-        returns (bytes32 orderHash, uint64 orderId) 
+        external nonReentrant validPrice(order.price) returns (bytes32 orderHash, uint64 orderId) 
     {
         require(order.maker == msg.sender, "INVALID_MAKER");
         require(order.baseToken == baseToken && order.quoteToken == quoteToken, "INVALID_TOKENS");
@@ -520,7 +410,6 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         if (order.isSellBase) {
             IVault(vault).lockBalance(order.maker, baseToken, order.baseAmount);
         } else {
-            // Check overflow before calculation
             require(order.baseAmount <= type(uint128).max / order.price * 1e18, "OVERFLOW");
             uint128 quoteNeeded = uint128((uint256(order.baseAmount) * order.price) / 1e18);
             require(quoteNeeded > 0, "ZERO_QUOTE_NEEDED");
@@ -539,16 +428,15 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             uint32 idx = _tickIndex(order.price);
             
             if (order.isSellBase) {
-                orderId = _enqueue(asks, idx, remainingOrder);
+                orderId = _enqueue(asks, idx, remainingOrder, orderHash);
                 orderIsBid[orderId] = false;
             } else {
-                orderId = _enqueue(bids, idx, remainingOrder);
+                orderId = _enqueue(bids, idx, remainingOrder, orderHash);
                 orderIsBid[orderId] = true;
             }
 
             // Track order
             orderHashToId[orderHash] = orderId;
-            orderIdToHash[orderId] = orderHash;
             orderTickIndex[orderId] = uint32(idx);
             userOrders[order.maker].push(orderHash);
 
@@ -569,21 +457,10 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             _removeOrder(asks, idx, orderId);
 
         // Unlock funds
-        if (node.isSellBase) {
-            IVault(vault).unlockBalance(node.maker, baseToken, node.remainingBase);
-        } else {
-            uint128 quoteToUnlock = uint128((uint256(node.remainingBase) * node.price) / 1e18);
-            IVault(vault).unlockBalance(node.maker, quoteToken, quoteToUnlock);
-        }
+        _unlockFunds(node);
 
         // Clean up tracking
-        delete orderHashToId[orderHash];
-        delete orderIdToHash[orderId];
-        delete orderIsBid[orderId];
-        delete orderTickIndex[orderId];
-
-        // Remove from user's order list
-        _removeFromUserOrders(node.maker, orderHash);
+        _cleanupOrder(orderId, orderHash, node.maker);
 
         emit OrderCancelled(orderHash, node.maker, orderId);
     }
@@ -597,7 +474,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     function getOrderInfo(bytes32 orderHash) external view returns (OrderStructs.OrderInfo memory info) {
         uint64 orderId = orderHashToId[orderHash];
         if (orderId == 0) {
-            info.status = OrderStructs.OrderStatus.CANCELLED; // Use CANCELLED as default for not found
+            info.status = OrderStructs.OrderStatus.CANCELLED;
             return info;
         }
 
@@ -614,9 +491,6 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             info.status = OrderStructs.OrderStatus.PENDING;
         }
         
-        // Calculate filled amount based on remaining amount
-        // We need to get the original order amount from somewhere
-        // For now, we'll set a placeholder and fix this later
         info.filledBase = 0; // TODO: Calculate properly
     }
 
