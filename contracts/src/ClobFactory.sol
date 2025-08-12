@@ -3,6 +3,7 @@ pragma solidity ^0.8.26;
 
 import "./ClobPair.sol";
 import "./interfaces/IClobFactory.sol";
+import "./interfaces/IVault.sol";
 
 contract ClobFactory is IClobFactory {
     address public immutable vault;
@@ -17,11 +18,19 @@ contract ClobFactory is IClobFactory {
     }
 
     function createClobPair(address base, address quote, uint256 tickSize) external returns (address pair) {
+        require(base != address(0) && quote != address(0), "ZERO_ADDRESS");
         require(base != quote, "IDENTICAL");
+        require(tickSize > 0, "ZERO_TICK_SIZE");
+        require(tickSize <= 32767, "TICK_SIZE_TOO_LARGE"); // MAX_TICK_INDEX
+        
+        // Check if tokens are supported by vault
+        require(IVault(vault).isSupportedToken(base), "BASE_TOKEN_NOT_SUPPORTED");
+        require(IVault(vault).isSupportedToken(quote), "QUOTE_TOKEN_NOT_SUPPORTED");
+        
         (address a, address b) = base < quote ? (base, quote) : (quote, base);
         require(pairs[a][b][tickSize] == address(0), "EXISTS");
 
-        pair = address(new ClobPair(a, b, tickSize, vault));
+        pair = address(new ClobPair(a, b, uint32(tickSize), vault));
 
         pairs[a][b][tickSize] = pair;
         pairs[b][a][tickSize] = pair; // reverse lookup allowed
