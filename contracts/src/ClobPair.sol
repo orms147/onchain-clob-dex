@@ -35,8 +35,6 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 expiry; //order expiry
         bytes32 orderHash; //order hash
     }
-    //total đã chuyển thành uint64, có nên chuyển remainingBase, price về uint64 ?
-    //order struct         uint64 nonce; expiry -> uint64 
 
     struct LevelQueue {
         uint64 head;    //head order id
