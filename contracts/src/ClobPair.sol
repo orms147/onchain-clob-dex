@@ -31,8 +31,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 remainingBase; //remaining base amount (optimized to uint64 for SST compatibility)
         uint256 price; //order price
         bool isSellBase; //true if sell baseToken order, false if buy
-        uint64 nonce; //order nonce
-        uint64 expiry; //order expiry
+        uint256 nonce; //order nonce
+        uint256 expiry; //order expiry
         bytes32 orderHash; //order hash
     }
 
@@ -94,7 +94,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return keccak256(abi.encode(order));
     }
 
-    function _isExpired(uint64 expiry) internal view returns (bool) {
+    function _isExpired(uint256 expiry) internal view returns (bool) {
         return expiry != 0 && block.timestamp > expiry;
     }
 
@@ -144,9 +144,9 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     function _enqueue(BookSide storage side, uint32 idx, OrderStructs.LimitOrder memory order, bytes32 orderHash) 
         internal returns (uint64 orderId) 
     {
-        LevelQueue storage level = side.levels[idx];    //Check queue
+        LevelQueue storage levelQueue = side.levels[idx];    //Check queue
         orderId = ++side.totalOrdersCreated;            //Get new order id
-        OrderNode storage node = level.orders[orderId]; //Get node
+        OrderNode storage node = levelQueue.orders[orderId]; //Get node
         
         //setup infor Node
         node.maker = order.maker;
@@ -158,30 +158,30 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         node.orderHash = orderHash;
 
         // Link to queue
-        if (level.tail == 0) {
-            level.head = orderId;
-            level.tail = orderId;
+        if (levelQueue.tail == 0) {
+            levelQueue.head = orderId;
+            levelQueue.tail = orderId;
         } else {
             //update prev and next
-            node.prev = level.tail;
-            level.orders[level.tail].next = orderId;
-            level.tail = orderId;
+            node.prev = levelQueue.tail;
+            levelQueue.orders[levelQueue.tail].next = orderId;
+            levelQueue.tail = orderId;
         }
         
         unchecked { 
-            level.length += 1;
-            level.totalBaseAmount += order.baseAmount;
+            levelQueue.length += 1;
+            levelQueue.totalBaseAmount += order.baseAmount;
         }
 
-        _updateSST(side, idx, level.totalBaseAmount);
+        _updateSST(side, idx, levelQueue.totalBaseAmount);
         return orderId;
     }
 
     function _removeOrder(BookSide storage side, uint32 idx, uint64 orderId) 
         internal returns (OrderNode memory node) 
     {
-        LevelQueue storage level = side.levels[idx];
-        OrderNode storage order = level.orders[orderId];
+        LevelQueue storage levelQueue = side.levels[idx];
+        OrderNode storage order = levelQueue.orders[orderId];
         require(order.maker != address(0), "ORDER_NOT_FOUND");
 
         node = order;
@@ -191,43 +191,44 @@ contract ClobPair is IClobPair, ReentrancyGuard {
 
         // Update links
         if (prev == 0) {
-            level.head = next;
+            levelQueue.head = next;
         } else {
-            level.orders[prev].next = next;
+            levelQueue.orders[prev].next = next;
         }
 
         if (next == 0) {
-            level.tail = prev;
+            levelQueue.tail = prev;
         } else {
-            level.orders[next].prev = prev;
+            levelQueue.orders[next].prev = prev;
         }
 
         // Update aggregates
         unchecked {
-            level.length -= 1;
-            level.totalBaseAmount -= node.remainingBase;
+            levelQueue.length -= 1;
+            levelQueue.totalBaseAmount -= node.remainingBase;
         }
 
-        delete level.orders[orderId];
-        _updateSST(side, idx, level.totalBaseAmount);
+        delete levelQueue.orders[orderId];
+        _updateSST(side, idx, levelQueue.totalBaseAmount);
         return node;
     }
 
     function _partialFill(BookSide storage side, uint32 idx, uint64 orderId, uint64 fillAmount) internal {
-        LevelQueue storage level = side.levels[idx];
-        OrderNode storage order = level.orders[orderId];
+        LevelQueue storage levelQueue = side.levels[idx];
+        OrderNode storage order = levelQueue.orders[orderId];
         
         require(order.remainingBase >= fillAmount, "INSUFFICIENT_REMAINING");
         
         unchecked {
             order.remainingBase -= fillAmount;
-            level.totalBaseAmount -= fillAmount;
+            levelQueue.totalBaseAmount -= fillAmount;
         }
 
-        _updateSST(side, idx, level.totalBaseAmount);
+        _updateSST(side, idx, levelQueue.totalBaseAmount);
     }
 
     // ---- SST Extensions ----
+    //Best ask
     function _findFirstNonZero(SegmentedSegmentTree.Core storage tree, uint256 left, uint256 right) 
         internal view returns (bool found, uint32 idx) 
     {
@@ -238,6 +239,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint256 lo = left;
         uint256 hi = right - 1;
         
+        //binary search [left, right)
         while (lo <= hi) {
             uint256 mid = (lo + hi) / 2;
             
@@ -254,6 +256,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return (false, 0);
     }
 
+    //Best bid
     function _findLastNonZero(SegmentedSegmentTree.Core storage tree, uint256 left, uint256 right) 
         internal view returns (bool found, uint32 idx) 
     {
@@ -283,7 +286,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     // ---- Matching Engine ----
     function _matchOrder(OrderStructs.LimitOrder calldata order) internal returns (uint64 totalBaseFilled) {
         uint32 limitIdx = _tickIndex(order.price);
-        uint64 remaining = order.baseAmount;
+        uint64 remaining = order.baseAmount;   
 
         if (order.isSellBase) {
             remaining = _matchAgainstBids(order.maker, remaining, limitIdx);
@@ -318,15 +321,15 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         }
     }
 
-    function _fillAtLevel(BookSide storage side, uint32 idx, address taker, uint64 remaining, bool takerIsBuying) 
+    function _fillAtLevel(BookSide storage side, uint32 idx, address taker, uint64 remaining, bool IsBuying) 
         internal returns (uint64 stillRemaining)
     {
-        LevelQueue storage level = side.levels[idx];
-        uint64 orderId = level.head;
+        LevelQueue storage levelQueue = side.levels[idx];
+        uint64 orderId = levelQueue.head;
         stillRemaining = remaining;
 
         while (orderId != 0 && stillRemaining > 0) {
-            OrderNode storage order = level.orders[orderId];
+            OrderNode storage order = levelQueue.orders[orderId];
             
             // Check expiry
             if (_isExpired(order.expiry)) {
@@ -341,7 +344,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             uint64 fillAmount = order.remainingBase > stillRemaining ? stillRemaining : order.remainingBase;
 
             // Execute trade
-            _executeTrade(order.maker, taker, fillAmount, order.price, takerIsBuying);
+            _executeTrade(order.maker, taker, fillAmount, order.price, IsBuying);
 
             // Emit fill event
             bool isFinal = order.remainingBase == fillAmount;
@@ -373,12 +376,12 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         return stillRemaining;
     }
 
-    function _executeTrade(address maker, address taker, uint64 baseAmount, uint256 price, bool takerIsBuying) internal {
+    function _executeTrade(address maker, address taker, uint64 baseAmount, uint256 price, bool IsBuying) internal {
         require(baseAmount > 0, "ZERO_AMOUNT");
         uint64 quoteAmount = uint64((uint256(baseAmount) * price) / 1e18);
         require(quoteAmount > 0, "ZERO_QUOTE");
 
-        if (takerIsBuying) {
+        if (IsBuying) {
             IVault(vault).executeTransfer(maker, taker, baseToken, baseAmount);
             IVault(vault).executeTransfer(taker, maker, quoteToken, quoteAmount);
         } else {
