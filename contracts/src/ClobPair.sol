@@ -28,7 +28,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 prev;    //prev order id
         uint64 next;    //next order id
         address maker;  //order maker
-        uint128 remainingBase; //remaining base amount
+        uint64 remainingBase; //remaining base amount (optimized to uint64 for SST compatibility)
         uint256 price; //order price
         bool isSellBase; //true if sell baseToken order, false if buy
         uint64 nonce; //order nonce
@@ -109,8 +109,8 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     }
 
     //arguments: side (buy or sell), tickIndex, totalBaseAmount
-    function _updateSST(BookSide storage side, uint32 idx, uint64 aggBase) internal {
-        side.tree.update(idx, aggBase);
+    function _updateSST(BookSide storage side, uint32 idx, uint64 totalBaseAmount) internal {
+        side.tree.update(idx, totalBaseAmount);
     }
 
     function _removeFromUserOrders(address user, bytes32 orderHash) internal {
@@ -135,7 +135,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         if (node.isSellBase) {
             IVault(vault).unlockBalance(node.maker, baseToken, node.remainingBase);
         } else {
-            uint128 quoteToUnlock = uint128((uint256(node.remainingBase) * node.price) / 1e18);
+            uint64 quoteToUnlock = uint64((uint256(node.remainingBase) * node.price) / 1e18);
             IVault(vault).unlockBalance(node.maker, quoteToken, quoteToUnlock);
         }
     }
@@ -162,6 +162,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             level.head = orderId;
             level.tail = orderId;
         } else {
+            //update prev and next
             node.prev = level.tail;
             level.orders[level.tail].next = orderId;
             level.tail = orderId;
@@ -204,7 +205,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         // Update aggregates
         unchecked {
             level.length -= 1;
-            level.totalBaseAmount -= uint64(node.remainingBase);
+            level.totalBaseAmount -= node.remainingBase;
         }
 
         delete level.orders[orderId];
@@ -337,7 +338,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
                 continue;
             }
 
-            uint64 fillAmount = uint64(order.remainingBase) > stillRemaining ? stillRemaining : uint64(order.remainingBase);
+            uint64 fillAmount = order.remainingBase > stillRemaining ? stillRemaining : order.remainingBase;
 
             // Execute trade
             _executeTrade(order.maker, taker, fillAmount, order.price, takerIsBuying);
@@ -411,7 +412,6 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         if (order.isSellBase) {
             IVault(vault).lockBalance(order.maker, baseToken, order.baseAmount);
         } else {
-            require(order.baseAmount <= type(uint64).max / order.price * 1e18, "OVERFLOW");
             uint64 quoteNeeded = uint64((uint256(order.baseAmount) * order.price) / 1e18);
             require(quoteNeeded > 0, "ZERO_QUOTE_NEEDED");
             IVault(vault).lockBalance(order.maker, quoteToken, quoteNeeded);
