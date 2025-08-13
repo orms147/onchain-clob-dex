@@ -28,7 +28,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 prev;    //prev order id
         uint64 next;    //next order id
         address maker;  //order maker
-        uint64 remainingBase; //remaining base amount (optimized to uint64 for SST compatibility)
+        uint64 remainingBase; //remaining base amount 
         uint256 price; //order price
         bool isSellBase; //true if sell baseToken order, false if buy
         uint256 nonce; //order nonce
