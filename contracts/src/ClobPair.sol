@@ -40,14 +40,14 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         uint64 head;    //head order id
         uint64 tail;    //tail order id
         uint64 length;  //number of orders in the level
-        uint64 aggBase; //total base amount in the level
+        uint64 totalBaseAmount; //total base amount in the level
         mapping(uint64 => OrderNode) orders; // orderId -> order node
     }
 
     struct BookSide {
         SegmentedSegmentTree.Core tree; //segmented segment tree for order aggregation
         mapping(uint32 => LevelQueue) levels; //tickIndex -> level queue (FIFO)
-        uint64 nextOrderId; //next order id
+        uint64 totalOrdersCreated; //total number of orders ever created in this side
     }
 
     BookSide private bids;  //buy order
@@ -144,16 +144,17 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     function _enqueue(BookSide storage side, uint32 idx, OrderStructs.LimitOrder memory order, bytes32 orderHash) 
         internal returns (uint64 orderId) 
     {
-        LevelQueue storage level = side.levels[idx];
-        orderId = ++side.nextOrderId;
-        OrderNode storage node = level.orders[orderId];
+        LevelQueue storage level = side.levels[idx];    //Check queue
+        orderId = ++side.totalOrdersCreated;            //Get new order id
+        OrderNode storage node = level.orders[orderId]; //Get node
         
+        //setup infor Node
         node.maker = order.maker;
-        node.remainingBase = uint128(order.baseAmount);
+        node.remainingBase = order.baseAmount;
         node.price = order.price;
         node.isSellBase = order.isSellBase;
-        node.nonce = uint64(order.nonce);
-        node.expiry = uint64(order.expiry);
+        node.nonce = order.nonce;
+        node.expiry = order.expiry;
         node.orderHash = orderHash;
 
         // Link to queue
@@ -168,10 +169,10 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         
         unchecked { 
             level.length += 1;
-            level.aggBase += uint64(order.baseAmount);
+            level.totalBaseAmount += order.baseAmount;
         }
 
-        _updateSST(side, idx, level.aggBase);
+        _updateSST(side, idx, level.totalBaseAmount);
         return orderId;
     }
 
@@ -203,11 +204,11 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         // Update aggregates
         unchecked {
             level.length -= 1;
-            level.aggBase -= uint64(node.remainingBase);
+            level.totalBaseAmount -= uint64(node.remainingBase);
         }
 
         delete level.orders[orderId];
-        _updateSST(side, idx, level.aggBase);
+        _updateSST(side, idx, level.totalBaseAmount);
         return node;
     }
 
@@ -219,10 +220,10 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         
         unchecked {
             order.remainingBase -= fillAmount;
-            level.aggBase -= fillAmount;
+            level.totalBaseAmount -= fillAmount;
         }
 
-        _updateSST(side, idx, level.aggBase);
+        _updateSST(side, idx, level.totalBaseAmount);
     }
 
     // ---- SST Extensions ----
@@ -281,7 +282,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
     // ---- Matching Engine ----
     function _matchOrder(OrderStructs.LimitOrder calldata order) internal returns (uint64 totalBaseFilled) {
         uint32 limitIdx = _tickIndex(order.price);
-        uint64 remaining = uint64(order.baseAmount);
+        uint64 remaining = order.baseAmount;
 
         if (order.isSellBase) {
             remaining = _matchAgainstBids(order.maker, remaining, limitIdx);
@@ -289,7 +290,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
             remaining = _matchAgainstAsks(order.maker, remaining, limitIdx);
         }
 
-        return uint64(order.baseAmount) - remaining;
+        return order.baseAmount - remaining;
     }
 
     function _matchAgainstBids(address taker, uint64 baseToSell, uint32 minPriceIdx) 
@@ -401,8 +402,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         require(order.maker == msg.sender, "INVALID_MAKER");
         require(order.baseToken == baseToken && order.quoteToken == quoteToken, "INVALID_TOKENS");
         require(order.baseAmount > 0, "ZERO_AMOUNT");
-        require(order.baseAmount <= type(uint64).max, "AMOUNT_TOO_LARGE");
-        require(!_isExpired(uint64(order.expiry)), "EXPIRED");
+        require(!_isExpired(order.expiry), "EXPIRED");
 
         orderHash = _hashOrder(order);
         require(orderHashToId[orderHash] == 0, "DUPLICATE_ORDER");
@@ -419,7 +419,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
 
         // Try to match against existing orders
         uint64 filledAmount = _matchOrder(order);
-        uint64 remainingAmount = uint64(order.baseAmount) - filledAmount;
+        uint64 remainingAmount = order.baseAmount - filledAmount;
 
         // If there's remaining amount, add to book
         if (remainingAmount > 0) {
@@ -512,7 +512,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         (exists, idx) = _findBestBid(0);
         if (exists) {
             price = uint256(idx) * uint256(tickSize);
-            totalBase = bids.levels[idx].aggBase;
+            totalBase = bids.levels[idx].totalBaseAmount;
         }
     }
 
@@ -521,7 +521,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         (exists, idx) = _findBestAsk(MAX_TICK_INDEX);
         if (exists) {
             price = uint256(idx) * uint256(tickSize);
-            totalBase = asks.levels[idx].aggBase;
+            totalBase = asks.levels[idx].totalBaseAmount;
         }
     }
 
@@ -530,7 +530,7 @@ contract ClobPair is IClobPair, ReentrancyGuard {
         LevelQueue storage bidLevel = bids.levels[idx];
         LevelQueue storage askLevel = asks.levels[idx];
         
-        totalBase = bidLevel.aggBase + askLevel.aggBase;
+        totalBase = bidLevel.totalBaseAmount + askLevel.totalBaseAmount;
         orderCount = bidLevel.length + askLevel.length;
     }
 }

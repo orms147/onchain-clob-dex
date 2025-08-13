@@ -29,11 +29,11 @@ library OrderStructs {
         address maker;        // Order creator
         address baseToken;    // Base token (canonical lower address enforced off-chain / factory)
         address quoteToken;   // Quote token
-        uint256 baseAmount;   // Amount of base the maker wants to trade (full size)
+        uint128 baseAmount;   // Amount of base the maker wants to trade (full size)
         uint256 price;        // Scaled price: quote per 1 base * PRICE_SCALE
         bool isSellBase;      // true -> sell base / receive quote, false -> buy base / spend quote
-        uint256 expiry;       // Expiration timestamp (unix seconds)
-        uint256 nonce;        // User nonce (replay protection / cancellation domain)
+        uint64 expiry;        // Expiration timestamp (unix seconds)
+        uint64 nonce;         // User nonce (replay protection / cancellation domain)
     }
 
     /**
