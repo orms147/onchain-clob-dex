@@ -21,7 +21,6 @@ contract ClobFactory is IClobFactory {
         require(base != address(0) && quote != address(0), "ZERO_ADDRESS");
         require(base != quote, "IDENTICAL");
         require(tickSize > 0, "ZERO_TICK_SIZE");
-        require(tickSize <= 32767, "TICK_SIZE_TOO_LARGE"); // MAX_TICK_INDEX
         
         // Check if tokens are supported by vault
         require(IVault(vault).isSupportedToken(base), "BASE_TOKEN_NOT_SUPPORTED");
@@ -30,9 +29,9 @@ contract ClobFactory is IClobFactory {
         (address a, address b) = base < quote ? (base, quote) : (quote, base);
         require(pairs[a][b][tickSize] == address(0), "EXISTS");
 
-        pair = address(new ClobPair(a, b, uint32(tickSize), vault));
+        pair = address(new ClobPair(a, b, tickSize, vault));
 
-        // Authorize the new ClobPair as executor in Vault
+        // Auto-authorize the ClobPair in Vault (requires ClobFactory to be Vault owner)
         IVault(vault).authorizeExecutor(pair, true);
 
         pairs[a][b][tickSize] = pair;
