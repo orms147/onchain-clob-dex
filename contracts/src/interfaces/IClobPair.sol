@@ -44,7 +44,7 @@ interface IClobPair {
     // --- Views ---
     function getOrderInfo(bytes32 orderHash) external view returns (OrderStructs.OrderInfo memory orderInfo);
     function getUserOrders(address user) external view returns (bytes32[] memory orderHashes);
-    function getPairInfo() external view returns (address baseToken, address quoteToken, uint32 tickSize);
+    function getPairInfo() external view returns (address baseToken, address quoteToken, uint256 tickSize);
     function getVault() external view returns (address vault);
 
     // Best bid / ask helpers 

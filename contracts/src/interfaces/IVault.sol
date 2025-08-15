@@ -22,6 +22,26 @@ interface IVault {
     function batchDeposit(address[] calldata tokens, uint256[] calldata amounts) external;
     function batchWithdraw(address[] calldata tokens, uint256[] calldata amounts) external;
 
+    /// @notice Deposit with EIP-712 permit signature
+    function depositWithPermit(
+        address token,
+        uint256 amount,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external;
+
+    /// @notice Batch deposit with EIP-712 permit signatures
+    function batchDepositWithPermit(
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        uint256[] calldata deadlines,
+        uint8[] calldata v,
+        bytes32[] calldata r,
+        bytes32[] calldata s
+    ) external;
+
     /// @notice Lock user's balance for trading (called by authorized ClobPairs)
     function lockBalance(address user, address token, uint256 amount) external;
     /// @notice Unlock user's balance (when order is cancelled or partially filled)
@@ -36,7 +56,7 @@ interface IVault {
     function getAvailableBalance(address user, address token) external view returns (uint256 availableBalance);
     /// @notice Get user's locked balance in active orders
     function getLockedBalance(address user, address token) external view returns (uint256 lockedBalance);
-
+    
     /// @notice Check if a token is supported
     function isSupportedToken(address token) external view returns (bool);
     /// @notice Check if an address is an authorized executor
