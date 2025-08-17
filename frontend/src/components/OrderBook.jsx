@@ -1,33 +1,49 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useWeb3 } from '../hooks/useWeb3';
+import { useContracts } from '../hooks/useContracts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
 const OrderBook = ({ currentPrice }) => {
   const [buyOrders, setBuyOrders] = useState([]);
   const [sellOrders, setSellOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const { signer, provider } = useWeb3();
+  const { contracts } = useContracts(signer);
 
   useEffect(() => {
-    // Generate mock order book data
-    const generateOrders = (basePrice, isBuy = true) => {
-      const orders = [];
-      for (let i = 0; i < 15; i++) {
-        const priceOffset = isBuy ? -i * 0.5 : i * 0.5;
-        const price = basePrice + priceOffset;
-        const amount = Math.random() * 10 + 0.1;
-        const total = price * amount;
-        orders.push({
-          id: Math.random().toString(36).substr(2, 9),
-          price: price,
-          amount: amount,
-          total: total
-        });
+    const fetchOrderBookData = async () => {
+      if (!contracts || !provider) {
+        // If no contracts available, show empty order book
+        setBuyOrders([]);
+        setSellOrders([]);
+        setLoading(false);
+        return;
       }
-      return orders;
+
+      try {
+        setLoading(true);
+
+        // For now, we'll show empty order book since we need to implement
+        // order book data fetching from contract events or state
+        // This would require listening to OrderPlaced events and maintaining
+        // the order book state
+
+        setBuyOrders([]);
+        setSellOrders([]);
+
+      } catch (error) {
+        console.error('Error fetching order book data:', error);
+        setBuyOrders([]);
+        setSellOrders([]);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    setBuyOrders(generateOrders(currentPrice, true));
-    setSellOrders(generateOrders(currentPrice, false));
-  }, [currentPrice]);
+    fetchOrderBookData();
+  }, [contracts, provider, currentPrice]);
 
   const OrderRow = ({ order, type, index }) => (
     <motion.div
@@ -71,9 +87,19 @@ const OrderBook = ({ currentPrice }) => {
           </div>
           
           <AnimatePresence>
-            {sellOrders.slice(0, 10).reverse().map((order, index) => (
-              <OrderRow key={order.id} order={order} type="sell" index={index} />
-            ))}
+            {loading ? (
+              <div className="text-center text-slate-400 py-4">
+                Đang tải...
+              </div>
+            ) : sellOrders.length > 0 ? (
+              sellOrders.slice(0, 10).reverse().map((order, index) => (
+                <OrderRow key={order.id} order={order} type="sell" index={index} />
+              ))
+            ) : (
+              <div className="text-center text-slate-400 py-4">
+                Không có lệnh bán
+              </div>
+            )}
           </AnimatePresence>
         </div>
 
@@ -104,9 +130,19 @@ const OrderBook = ({ currentPrice }) => {
         {/* Buy Orders */}
         <div className="h-1/2 overflow-y-auto">
           <AnimatePresence>
-            {buyOrders.slice(0, 10).map((order, index) => (
-              <OrderRow key={order.id} order={order} type="buy" index={index} />
-            ))}
+            {loading ? (
+              <div className="text-center text-slate-400 py-4">
+                Đang tải...
+              </div>
+            ) : buyOrders.length > 0 ? (
+              buyOrders.slice(0, 10).map((order, index) => (
+                <OrderRow key={order.id} order={order} type="buy" index={index} />
+              ))
+            ) : (
+              <div className="text-center text-slate-400 py-4">
+                Không có lệnh mua
+              </div>
+            )}
           </AnimatePresence>
         </div>
       </div>

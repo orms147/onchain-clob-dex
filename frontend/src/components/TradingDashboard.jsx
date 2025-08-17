@@ -9,12 +9,14 @@ import PriceChart from '@/components/PriceChart';
 import MarketStats from '@/components/MarketStats';
 import RecentTrades from '@/components/RecentTrades';
 import WalletConnection from '@/components/WalletConnection';
+import UserOrders from '@/components/UserOrders';
+import { useWeb3 } from '../hooks/useWeb3';
 
 const TradingDashboard = () => {
   const [selectedPair, setSelectedPair] = useState('ETH/USDC');
   const [currentPrice, setCurrentPrice] = useState(2456.78);
   const [priceChange, setPriceChange] = useState(2.34);
-  const [isConnected, setIsConnected] = useState(false);
+  const { isConnected } = useWeb3();
 
   const tradingPairs = [
     { symbol: 'ETH/USDC', price: 2456.78, change: 2.34 },
@@ -85,7 +87,7 @@ const TradingDashboard = () => {
               </div>
             </div>
             
-            <WalletConnection isConnected={isConnected} setIsConnected={setIsConnected} />
+            <WalletConnection />
             
             <Button
               variant="outline"
@@ -105,7 +107,7 @@ const TradingDashboard = () => {
       </div>
 
       {/* Main Trading Interface */}
-      <main className="flex-grow grid grid-cols-1 lg:grid-cols-4 gap-4 min-h-0">
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-5 gap-4 min-h-0">
         {/* Order Book */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -133,11 +135,20 @@ const TradingDashboard = () => {
           transition={{ delay: 0.3 }}
           className="lg:col-span-1 min-h-0"
         >
-          <TradingForm 
-            selectedPair={selectedPair} 
+          <TradingForm
+            selectedPair={selectedPair}
             currentPrice={currentPrice}
-            isConnected={isConnected}
           />
+        </motion.div>
+
+        {/* User Orders */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.4 }}
+          className="lg:col-span-1 min-h-0"
+        >
+          <UserOrders />
         </motion.div>
       </main>
 

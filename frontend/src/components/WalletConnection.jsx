@@ -3,10 +3,11 @@ import { motion } from 'framer-motion';
 import { Wallet, ChevronDown, Copy, ExternalLink, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { useWeb3 } from '../hooks/useWeb3';
 
-const WalletConnection = ({ isConnected, setIsConnected }) => {
+const WalletConnection = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [walletAddress] = useState('0x742d35Cc6634C0532925a3b8D');
+  const { account, isConnected, connectWallet, disconnectWallet } = useWeb3();
 
   const wallets = [
     { name: 'MetaMask', icon: '🦊', popular: true },
@@ -15,38 +16,32 @@ const WalletConnection = ({ isConnected, setIsConnected }) => {
     { name: 'Trust Wallet', icon: '🛡️', popular: false }
   ];
 
-  const handleConnect = (walletName) => {
-    toast({
-      title: "🚧 Kết nối ví chưa được triển khai—nhưng đừng lo! Bạn có thể yêu cầu nó trong lần nhắc tiếp theo! 🚀",
-      description: `Đang cố gắng kết nối ${walletName}...`
-    });
-    
-    // Simulate connection for demo
-    setTimeout(() => {
-      setIsConnected(true);
+  const handleConnect = async (walletName) => {
+    if (walletName === 'MetaMask') {
+      await connectWallet();
       setIsDropdownOpen(false);
+    } else {
       toast({
-        title: "Ví đã được kết nối!",
-        description: `Kết nối thành công với ${walletName}`
+        title: "Chỉ hỗ trợ MetaMask",
+        description: "Hiện tại chỉ hỗ trợ kết nối MetaMask",
+        variant: "destructive"
       });
-    }, 1000);
+    }
   };
 
   const handleDisconnect = () => {
-    setIsConnected(false);
+    disconnectWallet();
     setIsDropdownOpen(false);
-    toast({
-      title: "Đã ngắt kết nối ví",
-      description: "Ví của bạn đã được ngắt kết nối"
-    });
   };
 
   const copyAddress = () => {
-    navigator.clipboard.writeText(walletAddress);
-    toast({
-      title: "Đã sao chép địa chỉ",
-      description: "Địa chỉ ví đã được sao chép vào clipboard"
-    });
+    if (account) {
+      navigator.clipboard.writeText(account);
+      toast({
+        title: "Đã sao chép địa chỉ",
+        description: "Địa chỉ ví đã được sao chép vào clipboard"
+      });
+    }
   };
 
   if (!isConnected) {
@@ -114,7 +109,7 @@ const WalletConnection = ({ isConnected, setIsConnected }) => {
       >
         <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
         <span className="font-mono text-sm">
-          {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+          {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : 'Unknown'}
         </span>
         <ChevronDown className={`h-4 w-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
       </Button>
@@ -133,7 +128,7 @@ const WalletConnection = ({ isConnected, setIsConnected }) => {
             </div>
             <div className="bg-slate-800/50 rounded-lg p-3">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-sm text-slate-300">{walletAddress}</span>
+                <span className="font-mono text-sm text-slate-300">{account || 'Unknown'}</span>
                 <button
                   onClick={copyAddress}
                   className="text-slate-400 hover:text-white transition-colors"

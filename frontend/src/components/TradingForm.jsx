@@ -3,15 +3,24 @@ import { motion } from 'framer-motion';
 import { ShoppingCart, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { useWeb3 } from '../hooks/useWeb3';
+import { useContracts } from '../hooks/useContracts';
+import { createLimitOrder, signLimitOrder, createDomain, validateOrder, getOrderExpiry } from '../lib/eip712';
+import { getTokenAddress, getTradingPair } from '../lib/config';
 
-const TradingForm = ({ selectedPair, currentPrice, isConnected }) => {
+const TradingForm = ({ selectedPair, currentPrice }) => {
   const [orderType, setOrderType] = useState('limit');
   const [side, setSide] = useState('buy');
   const [price, setPrice] = useState('');
   const [amount, setAmount] = useState('');
   const [total, setTotal] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [baseToken, quoteToken] = selectedPair.split('/');
+  const { signer, account, isConnected, chainId } = useWeb3();
+  const { contracts, placeLimitOrder, getUserNonce } = useContracts(signer);
+
+  const tradingPair = getTradingPair(selectedPair);
+  const { baseToken, quoteToken } = tradingPair;
 
   useEffect(() => {
     if (orderType === 'limit') {
@@ -48,7 +57,7 @@ const TradingForm = ({ selectedPair, currentPrice, isConnected }) => {
     }
   };
 
-  const handleSubmitOrder = () => {
+  const handleSubmitOrder = async () => {
     if (!isConnected) {
       toast({
         title: "Ví chưa được kết nối",
@@ -67,10 +76,71 @@ const TradingForm = ({ selectedPair, currentPrice, isConnected }) => {
       return;
     }
 
-    toast({
-      title: "🚧 Việc đặt lệnh chưa được triển khai—nhưng đừng lo! Bạn có thể yêu cầu nó trong lần nhắc tiếp theo! 🚀",
-      description: `${side.toUpperCase()} ${amount} ${baseToken} tại ${orderType === 'limit' ? `$${price}` : 'giá thị trường'}`
-    });
+    if (!contracts || !signer || !account || !chainId) {
+      toast({
+        title: "Contracts chưa sẵn sàng",
+        description: "Vui lòng đợi contracts được khởi tạo",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+
+      // Get token addresses
+      const baseTokenAddress = getTokenAddress(baseToken);
+      const quoteTokenAddress = getTokenAddress(quoteToken);
+
+      // Get user nonce
+      const nonce = await getUserNonce(account);
+
+      // Create limit order
+      const order = createLimitOrder(
+        account,
+        baseTokenAddress,
+        quoteTokenAddress,
+        amount,
+        price,
+        side === 'sell', // isSellBase
+        getOrderExpiry(60), // 1 hour expiry
+        nonce
+      );
+
+      // Validate order
+      const validation = validateOrder(order);
+      if (!validation.isValid) {
+        throw new Error(validation.error);
+      }
+
+      // Create domain for signing
+      const domain = createDomain(Number(chainId), contracts.router.target);
+
+      // Sign the order
+      const signature = await signLimitOrder(signer, order, domain);
+
+      // Submit to contract
+      await placeLimitOrder(order, signature);
+
+      // Reset form
+      setAmount('');
+      setTotal('');
+
+      toast({
+        title: "Lệnh đã được đặt thành công! 🎉",
+        description: `${side.toUpperCase()} ${amount} ${baseToken} tại $${price}`,
+      });
+
+    } catch (error) {
+      console.error('Error placing order:', error);
+      toast({
+        title: "Lỗi khi đặt lệnh",
+        description: error.message || "Có lỗi xảy ra khi đặt lệnh",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const setPercentage = (percentage) => {
@@ -230,10 +300,10 @@ const TradingForm = ({ selectedPair, currentPrice, isConnected }) => {
               ? 'bg-green-600 hover:bg-green-700 glow-green'
               : 'bg-red-600 hover:bg-red-700 glow-red'
           }`}
-          disabled={!isConnected}
+          disabled={!isConnected || isSubmitting}
         >
           <ShoppingCart className="h-4 w-4 mr-2" />
-          {side === 'buy' ? 'Mua' : 'Bán'} {baseToken}
+          {isSubmitting ? 'Đang xử lý...' : `${side === 'buy' ? 'Mua' : 'Bán'} ${baseToken}`}
         </Button>
       </motion.div>
 
