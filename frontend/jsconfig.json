@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "baseUrl": ".", // thư mục gốc
+    "paths": {
+      "@/*": ["src/*"] // ánh xạ alias @ đến src
+    }
+  }
+}
