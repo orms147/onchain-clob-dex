@@ -83,8 +83,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     // ---- Modifiers ----
     modifier validPrice(uint256 price) {
         require(price > 0 && price % tickSize == 0, "INVALID_PRICE");
-        // Removed MAX_TICK_INDEX check as tickSize can be large (1e12, 1e15, 1e18)
-        // The SST will handle the actual tickIndex range internally
+
         _;
     }
 
@@ -99,22 +98,16 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         return price / tickSize;
     }
 
-    // Map large tickIndex to SST-compatible range (0-32767)
     function _mapTickIndexToSST(uint256 tickIndex) internal pure returns (uint32) {
-        // For large tickSize (1e12, 1e15, 1e18), tickIndex will be small
-        // For small tickSize (1, 10, 100), tickIndex can be large
-        // We need to map this to SST range (0-32767)
         if (tickIndex <= 32767) {
             return uint32(tickIndex);
         } else {
-            // For very large tickIndex, we need to compress it
-            // This is a simple modulo approach - in production you might want a more sophisticated mapping
             return uint32(tickIndex % 32768);
         }
     }
 
     function _hashOrder(OrderStructs.LimitOrder calldata order) internal view returns (bytes32) {
-        // Use same EIP-712 hash as Router
+
         return _hashTypedDataV4(keccak256(abi.encode(
             LIMIT_ORDER_TYPEHASH,
             order.maker,
@@ -142,7 +135,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         return isBid ? bids.levels[idx].orders[orderId] : asks.levels[idx].orders[orderId];
     }
 
-    //arguments: side (buy or sell), tickIndex, totalBaseAmount
+
     function _updateSST(BookSide storage side, uint256 idx, uint64 totalBaseAmount) internal {
         uint32 sstIdx = _mapTickIndexToSST(idx);
         side.tree.update(sstIdx, totalBaseAmount);
@@ -183,11 +176,11 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     function _enqueue(BookSide storage side, uint256 idx, OrderStructs.LimitOrder memory order, bytes32 orderHash) 
         internal returns (uint64 orderId) 
     {
-        LevelQueue storage levelQueue = side.levels[idx];    //Check queue
-        orderId = ++side.totalOrdersCreated;            //Get new order id
-        OrderNode storage node = levelQueue.orders[orderId]; //Get node
+        LevelQueue storage levelQueue = side.levels[idx];
+        orderId = ++side.totalOrdersCreated;
+        OrderNode storage node = levelQueue.orders[orderId];
         
-        //setup infor Node
+
         node.maker = order.maker;
         node.remainingBase = order.baseAmount;
         node.price = order.price;
@@ -201,7 +194,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
             levelQueue.head = orderId;
             levelQueue.tail = orderId;
         } else {
-            //update prev and next
+
             node.prev = levelQueue.tail;
             levelQueue.orders[levelQueue.tail].next = orderId;
             levelQueue.tail = orderId;
@@ -278,7 +271,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         uint32 lo = left;
         uint32 hi = right - 1;
         
-        //binary search [left, right)
+
         while (lo <= hi) {
             uint32 mid = (lo + hi) / 2;
             
@@ -370,6 +363,12 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         while (orderId != 0 && stillRemaining > 0) {
             OrderNode storage order = levelQueue.orders[orderId];
             
+            // Prevent self-matching: Skip orders from same maker
+            if (order.maker == taker) {
+                orderId = order.next;
+                continue;
+            }
+            
             // Check expiry
             if (_isExpired(order.expiry)) {
                 uint64 nextId = order.next;
@@ -434,8 +433,6 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         uint32 sstMinIdx = _mapTickIndexToSST(minIdx);
         (bool sstFound, uint32 sstIdx) = _findLastNonZero(bids.tree, sstMinIdx, uint32(MAX_TICK_INDEX + 1));
         if (sstFound) {
-            // Map back to original tickIndex space
-            // This is a simplified mapping - in production you'd need a more sophisticated approach
             idx = uint256(sstIdx);
         }
         return (sstFound, idx);
@@ -445,7 +442,6 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         uint32 sstMaxIdx = _mapTickIndexToSST(maxIdx);
         (bool sstFound, uint32 sstIdx) = _findFirstNonZero(asks.tree, 0, uint32(sstMaxIdx + 1));
         if (sstFound) {
-            // Map back to original tickIndex space
             idx = uint256(sstIdx);
         }
         return (sstFound, idx);
@@ -455,7 +451,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     function placeLimitOrder(OrderStructs.LimitOrder calldata order) 
         external nonReentrant validPrice(order.price) returns (bytes32 orderHash, uint64 orderId) 
     {
-        //require(order.maker == msg.sender, "INVALID_MAKER");
+        require(order.maker == msg.sender, "INVALID_MAKER");
         require(order.baseToken == baseToken && order.quoteToken == quoteToken, "INVALID_TOKENS");
         require(order.baseAmount > 0, "ZERO_AMOUNT");
         require(!_isExpired(order.expiry), "EXPIRED");
@@ -467,8 +463,10 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         if (order.isSellBase) {
             IVault(vault).lockBalance(order.maker, baseToken, order.baseAmount);
         } else {
-            uint64 quoteNeeded = uint64((uint256(order.baseAmount) * order.price) / 1e18);
-            require(quoteNeeded > 0, "ZERO_QUOTE_NEEDED");
+            uint256 quoteNeeded256 = (uint256(order.baseAmount) * order.price) / 1e18;
+            require(quoteNeeded256 > 0, "ZERO_QUOTE_NEEDED");
+            require(quoteNeeded256 <= type(uint64).max, "QUOTE_AMOUNT_TOO_LARGE");
+            uint64 quoteNeeded = uint64(quoteNeeded256);
             IVault(vault).lockBalance(order.maker, quoteToken, quoteNeeded);
         }
 

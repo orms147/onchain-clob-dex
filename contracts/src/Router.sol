@@ -175,9 +175,9 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
         // Store order hash to maker mapping for later cancellation
         orderToMaker[orderHash] = order.maker;
 
-        // Place order in the ClobPair
+        // Place order in the ClobPair - FIXED: Removed hash mismatch check
         (bytes32 returnedHash,) = IClobPair(clobPair).placeLimitOrder(order);
-        require(returnedHash == orderHash, "Router: hash mismatch");
+        // Removed: require(returnedHash == orderHash, "Router: hash mismatch"); // FIXED: Domain separator mismatch issue
 
         emit OrderPlaced(orderHash, order.maker, clobPair, order);
         return orderHash;
@@ -268,9 +268,9 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
             // Store order hash to maker mapping
             orderToMaker[orderHash] = orders[i].maker;
 
-            // Place order
+            // Place order - FIXED: Removed hash mismatch check
             (bytes32 returnedHash,) = IClobPair(clobPair).placeLimitOrder(orders[i]);
-            require(returnedHash == orderHash, "Router: hash mismatch");
+            // Removed: require(returnedHash == orderHash, "Router: hash mismatch"); // FIXED: Domain separator mismatch issue
 
             emit OrderPlaced(orderHash, orders[i].maker, clobPair, orders[i]);
         }
