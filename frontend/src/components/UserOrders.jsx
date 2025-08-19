@@ -27,7 +27,7 @@ const UserOrders = () => {
         
         // Get OrderPlaced events for this user
         const filter = contracts.router.filters.OrderPlaced(null, account);
-        const events = await contracts.router.queryFilter(filter, -100); // Last 100 blocks
+        const events = await contracts.router.queryFilter(filter, -2000); // Increased to 2000 blocks
         
         console.log('📋 Found OrderPlaced events:', events.length);
         
@@ -35,18 +35,49 @@ const UserOrders = () => {
           const args = event.args;
           const orderData = args[3]; // Order struct
           
+          console.log(`🔍 Processing order ${index}:`, {
+            orderHash: args[0],
+            maker: args[1], 
+            clobPair: args[2],
+            orderData: orderData,
+            baseAmount: orderData?.baseAmount?.toString(),
+            price: orderData?.price?.toString()
+          });
+          
+          // Safe parsing with validation
+          let parsedBaseAmount = '0';
+          let parsedPrice = '0';
+          
+          try {
+            if (orderData?.baseAmount) {
+              parsedBaseAmount = parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4);
+            }
+          } catch (e) {
+            console.warn('Failed to parse baseAmount:', e);
+            parsedBaseAmount = orderData?.baseAmount?.toString() || '0';
+          }
+          
+          try {
+            if (orderData?.price) {
+              parsedPrice = parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4);
+            }
+          } catch (e) {
+            console.warn('Failed to parse price:', e);
+            parsedPrice = orderData?.price?.toString() || '0';
+          }
+          
           return {
             id: args[0] || `order-${index}`, // orderHash
             maker: args[1] || account,
             clobPair: args[2] || 'Unknown',
             baseToken: orderData?.baseToken || 'Unknown',
             quoteToken: orderData?.quoteToken || 'Unknown', 
-            baseAmount: orderData?.baseAmount ? 
-              parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4) : '0', // 6 decimals
-            price: orderData?.price ? 
-              parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4) : '0', // 18 decimals
+            baseAmount: parsedBaseAmount,
+            amount: parsedBaseAmount, // Add amount property for UI compatibility
+            price: parsedPrice,
             side: orderData?.isSellBase ? 'sell' : 'buy',
             status: 'active',
+            filled: 0, // Add filled property
             timestamp: Date.now() - (index * 60000), // Mock timestamps
             blockNumber: event.blockNumber,
             rawBaseAmount: orderData?.baseAmount?.toString() || '0',
@@ -215,7 +246,7 @@ const UserOrders = () => {
                     </div>
                     <div>
                       <div className="text-slate-500">Số lượng</div>
-                      <div>{order.amount} {order.baseToken}</div>
+                      <div>{(order.amount || 0)} {order.baseToken}</div>
                     </div>
                     <div>
                       <div className="text-slate-500">Đã khớp</div>
@@ -223,7 +254,7 @@ const UserOrders = () => {
                     </div>
                     <div>
                       <div className="text-slate-500">Còn lại</div>
-                      <div>{(order.amount - (order.filled || 0)).toFixed(4)} {order.baseToken}</div>
+                      <div>{((order.amount || 0) - (order.filled || 0)).toFixed(4)} {order.baseToken}</div>
                     </div>
                   </div>
 

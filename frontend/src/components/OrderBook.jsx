@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useWeb3 } from '../hooks/useWeb3';
 import { useContracts } from '../hooks/useContracts';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { ethers } from 'ethers';
 
 const OrderBook = ({ currentPrice }) => {
   const [buyOrders, setBuyOrders] = useState([]);
@@ -24,14 +25,57 @@ const OrderBook = ({ currentPrice }) => {
 
       try {
         setLoading(true);
+        console.log('🔄 Fetching OrderBook data...');
 
-        // For now, we'll show empty order book since we need to implement
-        // order book data fetching from contract events or state
-        // This would require listening to OrderPlaced events and maintaining
-        // the order book state
-
-        setBuyOrders([]);
-        setSellOrders([]);
+        // Get all OrderPlaced events to build order book
+        const filter = contracts.router.filters.OrderPlaced();
+        const events = await contracts.router.queryFilter(filter, -1000); // Last 1000 blocks
+        
+        console.log('📋 Found total OrderPlaced events:', events.length);
+        
+        // Process events to build order book
+        const buyOrdersTemp = [];
+        const sellOrdersTemp = [];
+        
+        events.forEach((event) => {
+          const args = event.args;
+          const orderData = args[3]; // Order struct
+          
+          if (!orderData) return;
+          
+          const baseAmount = orderData.baseAmount ? 
+            parseFloat(ethers.formatUnits(orderData.baseAmount, 6)) : 0;
+          const price = orderData.price ? 
+            parseFloat(ethers.formatUnits(orderData.price, 18)) : 0;
+          
+          const order = {
+            id: args[0],
+            maker: args[1],
+            baseAmount: baseAmount,
+            price: price,
+            amount: baseAmount, // For OrderRow component compatibility
+            total: baseAmount * price, // Calculate total value
+            side: orderData.isSellBase ? 'sell' : 'buy'
+          };
+          
+          if (order.side === 'buy') {
+            buyOrdersTemp.push(order);
+          } else {
+            sellOrdersTemp.push(order);
+          }
+        });
+        
+        // Sort orders: Buy orders by price DESC, Sell orders by price ASC
+        buyOrdersTemp.sort((a, b) => b.price - a.price);
+        sellOrdersTemp.sort((a, b) => a.price - b.price);
+        
+        setBuyOrders(buyOrdersTemp.slice(0, 10)); // Show top 10
+        setSellOrders(sellOrdersTemp.slice(0, 10)); // Show top 10
+        
+        console.log('✅ OrderBook updated:', {
+          buyOrders: buyOrdersTemp.length,
+          sellOrders: sellOrdersTemp.length
+        });
 
       } catch (error) {
         console.error('Error fetching order book data:', error);
@@ -55,13 +99,13 @@ const OrderBook = ({ currentPrice }) => {
       }`}
     >
       <div className={`font-mono ${type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
-        {order.price.toFixed(2)}
+        {(order.price || 0).toFixed(2)}
       </div>
       <div className="text-slate-300 text-right">
-        {order.amount.toFixed(4)}
+        {(order.amount || 0).toFixed(4)}
       </div>
       <div className="text-slate-400 text-right">
-        {order.total.toFixed(2)}
+        {(order.total || 0).toFixed(2)}
       </div>
     </motion.div>
   );

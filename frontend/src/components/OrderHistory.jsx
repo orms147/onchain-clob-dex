@@ -24,9 +24,9 @@ const OrderHistory = () => {
       setLoading(true);
       console.log('🔄 Refreshing orders for:', account);
       
-      // Get OrderPlaced events for this user
+      // Get OrderPlaced events for this user  
       const filter = contracts.router.filters.OrderPlaced(null, account);
-      const events = await contracts.router.queryFilter(filter, -100);
+      const events = await contracts.router.queryFilter(filter, -1000); // Increased from -100 to -1000
       
       console.log('📋 Found orders:', events.length);
       

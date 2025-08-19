@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Wallet, ChevronDown, Copy, ExternalLink, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ import { useWeb3 } from '../hooks/useWeb3';
 const WalletConnection = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const { account, isConnected, connectWallet, disconnectWallet } = useWeb3();
+
+
 
   const wallets = [
     { name: 'MetaMask', icon: '🦊', popular: true },

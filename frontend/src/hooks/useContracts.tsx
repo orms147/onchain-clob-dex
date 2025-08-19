@@ -96,8 +96,20 @@ export const useContracts = (signer: ethers.Signer | null) => {
     const placeLimitOrder = async (order: LimitOrder, signature: string = "0x") => {
         if (!contracts) throw new Error("Contracts not initialized");
 
+        // Convert order to contract-compatible format
+        const contractOrder = {
+            maker: order.maker,
+            baseToken: order.baseToken,
+            quoteToken: order.quoteToken,
+            baseAmount: order.baseAmount, // Already uint64 from eip712.ts
+            price: order.price,           // Already uint256 from eip712.ts
+            isSellBase: order.isSellBase,
+            expiry: order.expiry,
+            nonce: order.nonce
+        };
+
         return handleTransaction(
-            () => contracts.router.placeLimitOrder(order, signature),
+            () => contracts.router.placeLimitOrder(contractOrder, signature),
             "Order placed successfully!",
             "Place order"
         );
@@ -107,8 +119,20 @@ export const useContracts = (signer: ethers.Signer | null) => {
     const cancelOrder = async (order: LimitOrder, signature: string = "0x") => {
         if (!contracts) throw new Error("Contracts not initialized");
 
+        // Convert order to contract-compatible format
+        const contractOrder = {
+            maker: order.maker,
+            baseToken: order.baseToken,
+            quoteToken: order.quoteToken,
+            baseAmount: order.baseAmount,
+            price: order.price,
+            isSellBase: order.isSellBase,
+            expiry: order.expiry,
+            nonce: order.nonce
+        };
+
         return handleTransaction(
-            () => contracts.router.cancelOrder(order, signature),
+            () => contracts.router.cancelOrder(contractOrder, signature),
             "Order cancelled successfully!",
             "Cancel order"
         );
@@ -123,7 +147,20 @@ export const useContracts = (signer: ethers.Signer | null) => {
     // Hash order for signing
     const hashOrder = async (order: LimitOrder): Promise<string> => {
         if (!contracts) throw new Error("Contracts not initialized");
-        return await contracts.router.hashOrder(order);
+        
+        // Convert order to contract-compatible format
+        const contractOrder = {
+            maker: order.maker,
+            baseToken: order.baseToken,
+            quoteToken: order.quoteToken,
+            baseAmount: order.baseAmount,
+            price: order.price,
+            isSellBase: order.isSellBase,
+            expiry: order.expiry,
+            nonce: order.nonce
+        };
+        
+        return await contracts.router.hashOrder(contractOrder);
     };
 
     // Get domain separator for EIP-712

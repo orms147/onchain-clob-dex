@@ -22,7 +22,9 @@ const TradingForm = () => {
   const [pairStatus, setPairStatus] = useState(null);
 
   const { provider, signer, account, isConnected, chainId } = useWeb3();
-  const { contracts } = useContracts(signer);
+  const { contracts, placeLimitOrder, hashOrder, getUserNonce } = useContracts(signer);
+
+
 
   useEffect(() => {
     if (orderType === 'limit') {
@@ -109,13 +111,6 @@ const TradingForm = () => {
     try {
       setIsSubmitting(true);
 
-      console.log('🔄 Placing order...');
-      console.log('  Base Token:', baseTokenAddress);
-      console.log('  Quote Token:', quoteTokenAddress);
-      console.log('  Amount:', amount);
-      console.log('  Price:', price);
-      console.log('  Side:', side);
-
       // Check if pair exists first
       const tickSizeBigInt = BigInt(tickSize);
       const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, tickSizeBigInt);
@@ -124,56 +119,20 @@ const TradingForm = () => {
         throw new Error('Trading pair does not exist. Please create it first using Factory contract.');
       }
 
-      console.log('✅ Found ClobPair:', pairAddress);
+      // Get user nonce using useContracts hook
+      const nonce = await getUserNonce(account);
 
-      // Get user nonce
-      const nonce = await contracts.router.getUserNonce(account);
-      console.log('📋 User nonce:', nonce.toString());
-
-      // Create order
+      // Create order with correct types
       const order = createLimitOrder(
-        account,
-        baseTokenAddress,
-        quoteTokenAddress,
-        amount,
-        price,
-        side === 'sell',
-        getOrderExpiry(60), // 1 hour expiry
-        nonce
+        account,                    // address maker
+        baseTokenAddress,          // address baseToken
+        quoteTokenAddress,         // address quoteToken
+        amount,                    // string -> converts to uint64 internally
+        price,                     // string -> converts to uint256 internally
+        side === 'sell',          // bool isSellBase
+        getOrderExpiry(60),       // number -> converts to uint256 expiry
+        nonce                     // bigint nonce
       );
-      
-      console.log('📝 Created order:', {
-        maker: order.maker,
-        baseToken: order.baseToken,
-        quoteToken: order.quoteToken,
-        baseAmount: `${order.baseAmount.toString()} (${ethers.formatUnits(order.baseAmount, 6)} tokens)`,
-        price: `${order.price.toString()} (${ethers.formatUnits(order.price, 18)} quote per base)`,
-        isSellBase: order.isSellBase,
-        expiry: order.expiry.toString(),
-        nonce: order.nonce.toString()
-      });
-
-      // Validate order struct format
-      const MAX_UINT64 = 2n ** 64n - 1n;
-      const MAX_UINT256 = 2n ** 256n - 1n;
-      
-      if (order.baseAmount > MAX_UINT64) {
-        throw new Error(`baseAmount ${order.baseAmount} exceeds uint64 max (${MAX_UINT64})`);
-      }
-      
-      if (order.price > MAX_UINT256) {
-        throw new Error(`price ${order.price} exceeds uint256 max`);
-      }
-      
-      if (order.expiry > MAX_UINT256) {
-        throw new Error(`expiry ${order.expiry} exceeds uint256 max`);
-      }
-      
-      if (order.nonce > MAX_UINT256) {
-        throw new Error(`nonce ${order.nonce} exceeds uint256 max`);
-      }
-      
-      console.log('✅ Order struct validation passed');
 
       // Validate order
       const validation = validateOrder(order);
@@ -183,64 +142,22 @@ const TradingForm = () => {
 
       // Use Router domain for signing (Router will verify signature)
       const domain = createDomain(Number(chainId), contracts.router.target);
-      console.log('🔍 EIP712 Domain (using Router address):', domain);
-
-      // WORKAROUND: We need to check if the smart contracts have been fixed
-      // If not, we might need to use a different approach
-      console.log('🔍 Checking if Router and ClobPair use same domain separator...');
-
-      // Check if we can call without signature (if maker == msg.sender)
-      console.log('🔍 Account check:', account, 'vs order.maker:', order.maker);
       let signature;
       if (account.toLowerCase() === order.maker.toLowerCase()) {
-        console.log('✅ Maker is msg.sender - no signature required');
-        signature = '0x'; // Empty signature
+        signature = '0x'; // Empty signature - no signature required for self-orders
       } else {
         // Sign the order
-        console.log('✍️ Signing order...');
         signature = await signLimitOrder(signer, order, domain);
-        console.log('Signature:', signature);
-        console.log('Signature length:', signature.length);
       }
-      
-      // Test signature recovery locally (only if signature is not empty)
-      if (signature !== '0x') {
-        try {
-          const orderHash = await contracts.router.hashOrder(order);
-          console.log('Order hash from Router:', orderHash);
-          
-          // Test EIP712 signature recovery 
-          const recoveredAddress = ethers.verifyTypedData(domain, LIMIT_ORDER_TYPES, {
-            maker: order.maker,
-            baseToken: order.baseToken,
-            quoteToken: order.quoteToken,
-            baseAmount: order.baseAmount.toString(),
-            price: order.price.toString(),
-            isSellBase: order.isSellBase,
-            expiry: order.expiry.toString(),
-            nonce: order.nonce.toString()
-          }, signature);
-          
-          console.log('EIP712 recovered address:', recoveredAddress);
-          console.log('Expected maker:', order.maker);
-          console.log('EIP712 signature recovery matches:', recoveredAddress.toLowerCase() === order.maker.toLowerCase());
-        } catch (recoverError) {
-          console.error('Error testing signature recovery:', recoverError);
-        }
-      } else {
-        console.log('✅ Skipping signature recovery test (empty signature for self-signed order)');
-      }
+
       
       // Pre-flight validation
-      console.log('🔍 Pre-flight validation...');
-      
       // Check if tokens are supported in Vault
       const [isBaseSupported, isQuoteSupported] = await Promise.all([
         contracts.vault.isSupportedToken(order.baseToken),
         contracts.vault.isSupportedToken(order.quoteToken)
       ]);
       
-      console.log('Token support:', { isBaseSupported, isQuoteSupported });
       if (!isBaseSupported) {
         throw new Error(`Base token ${order.baseToken} not supported in Vault`);
       }
@@ -250,7 +167,6 @@ const TradingForm = () => {
       
       // Check if Router is authorized executor
       const isAuthorized = await contracts.vault.isExecutor(contracts.router.target);
-      console.log('Router authorized:', isAuthorized);
       if (!isAuthorized) {
         throw new Error('Router is not authorized executor in Vault');
       }
@@ -262,15 +178,9 @@ const TradingForm = () => {
         (order.baseAmount * order.price) / (10n ** 18n);
       
       const availableBalance = await contracts.vault.getAvailableBalance(account, tokenToCheck);
-      console.log('Balance check:', {
-        tokenToCheck: tokenToCheck.slice(0,6) + '...',
-        required: ethers.formatUnits(requiredAmount, 18),
-        available: ethers.formatUnits(availableBalance, 18)
-      });
       
       if (availableBalance < requiredAmount) {
         const deficit = requiredAmount - availableBalance;
-        console.log('💰 Insufficient balance, need to deposit:', ethers.formatUnits(deficit, 18));
         
         // Check wallet balance first
           const tokenContract = new ethers.Contract(tokenToCheck, [
@@ -280,7 +190,6 @@ const TradingForm = () => {
           ], signer);
           
           const walletBalance = await tokenContract.balanceOf(account);
-        console.log('Wallet balance:', ethers.formatUnits(walletBalance, 18));
           
           if (walletBalance < deficit) {
           throw new Error(`Insufficient wallet balance. Need ${ethers.formatUnits(deficit, 18)} more tokens in wallet`);
@@ -288,98 +197,19 @@ const TradingForm = () => {
           
           // Check allowance
           const allowance = await tokenContract.allowance(account, contracts.vault.target);
-        console.log('Current allowance:', ethers.formatUnits(allowance, 18));
           
           if (allowance < deficit) {
-          console.log('📝 Approving Vault...');
             const approveTx = await tokenContract.approve(contracts.vault.target, deficit);
             await approveTx.wait();
-            console.log('✅ Approval successful');
           }
           
           // Deposit to Vault
-          console.log('💾 Depositing to Vault...');
           const depositTx = await contracts.vault.deposit(tokenToCheck, deficit);
           await depositTx.wait();
-          console.log('✅ Deposit successful');
       }
 
-      // Debug order data before submitting
-      console.log('🔍 Final order debugging:');
-      console.log('Order object:', order);
-      console.log('Order types check:', {
-        maker: typeof order.maker,
-        baseToken: typeof order.baseToken,
-        quoteToken: typeof order.quoteToken,
-        baseAmount: typeof order.baseAmount,
-        price: typeof order.price,
-        isSellBase: typeof order.isSellBase,
-        expiry: typeof order.expiry,
-        nonce: typeof order.nonce
-      });
-
-      // Test order hash calculation directly
-      const routerOrderHash = await contracts.router.hashOrder(order);
-      console.log('🔍 Router calculated order hash:', routerOrderHash);
-      
-      // CRITICAL DEBUG: Check what hash Router and ClobPair calculate
-      try {
-        const routerHash = await contracts.router.hashOrder(order);
-        console.log('🔍 Router calculates hash:', routerHash);
-        
-        // Get ClobPair address and test its hash calculation if possible
-        const pairAddr = await contracts.factory.getClobPair(order.baseToken, order.quoteToken, BigInt(tickSize));
-        console.log('🔍 ClobPair address:', pairAddr);
-        
-        if (pairAddr !== ethers.ZeroAddress) {
-          // Try to call ClobPair's internal hash function (will likely fail since it's internal)
-          console.log('🔍 Router expects hash:', routerHash);
-          console.log('🔍 But ClobPair likely calculates different hash due to different domain separator');
-          console.log('❌ This is why we get "Router: hash mismatch"');
-        }
-      } catch (debugError) {
-        console.error('Debug error:', debugError);
-      }
-      
-      // Try to simulate the call first to get better error info
-      try {
-        console.log('🧪 Simulating Router.placeLimitOrder call...');
-        await contracts.router.placeLimitOrder.staticCall(order, signature);
-        console.log('✅ Static call successful');
-      } catch (staticError) {
-        console.error('❌ Static call failed:', staticError);
-        
-        // Try to get more detailed error info
-        if (staticError.data) {
-          console.log('Error data:', staticError.data);
-        }
-        
-        throw new Error(`Static call failed: ${staticError.message}`);
-      }
-
-      // Estimate gas
-      try {
-        console.log('⛽ Estimating gas...');
-        const gasEstimate = await contracts.router.placeLimitOrder.estimateGas(order, signature);
-        console.log('✅ Gas estimate:', gasEstimate.toString());
-      } catch (gasError) {
-        console.error('❌ Gas estimation failed:', gasError);
-        
-        // Additional debugging for gas estimation failure
-        console.log('Transaction data would be:', {
-          to: contracts.router.target,
-          data: contracts.router.interface.encodeFunctionData('placeLimitOrder', [order, signature])
-        });
-        
-        throw new Error(`Gas estimation failed: ${gasError.message}`);
-      }
-
-      // Submit to Router
-      console.log('📤 Submitting order via Router...');
-      const tx = await contracts.router.placeLimitOrder(order, signature);
-      console.log('⏳ Waiting for confirmation...');
-      await tx.wait();
-      console.log('✅ Order placed successfully!');
+      // Submit to Router using useContracts hook
+      const tx = await placeLimitOrder(order, signature);
 
       // Reset form
       setAmount('');
@@ -453,16 +283,9 @@ const TradingForm = () => {
     try {
       setIsCheckingPair(true);
       setPairStatus(null);
-
-      console.log('🔍 Checking pair existence...');
-      console.log('Base Token:', baseTokenAddress);
-      console.log('Quote Token:', quoteTokenAddress);
-      console.log('Tick Size:', tickSize);
       
       const tickSizeBigInt = BigInt(tickSize);
-      
       const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, tickSizeBigInt);
-      console.log('📍 Pair address result:', pairAddress);
       
       if (pairAddress === ethers.ZeroAddress) {
         setPairStatus({ exists: false, address: null });
@@ -491,98 +314,440 @@ const TradingForm = () => {
     }
   };
 
-  const debugRouterCall = async () => {
-    console.log('🔍 Debug Router Call Starting...');
-    console.log('Contracts available:', !!contracts);
-    console.log('Account:', account);
-    
-    if (!contracts) {
-      console.log('❌ Contracts not available');
+
+
+
+
+  const debugMatchingEngine = async () => {
+    if (!baseTokenAddress || !quoteTokenAddress || !tickSize || !contracts) {
       toast({
-        title: "Contracts Not Ready",
-        description: "Please wait for contracts to initialize",
+        title: "Cannot Debug",
+        description: "Please fill all fields first",
         variant: "destructive"
       });
       return;
     }
-    
-    if (!account) {
-      console.log('❌ Account not connected');
+
+    try {
+      setIsSubmitting(true);
+      console.log('🔍 ===== MATCHING ENGINE DEBUG =====');
+      
+      // Get pair address
+      const tickSizeBigInt = BigInt(tickSize);
+      const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, tickSizeBigInt);
+      
+      if (pairAddress === ethers.ZeroAddress) {
+        console.log('❌ No pair found');
+        return;
+      }
+
+      console.log('📍 ClobPair address:', pairAddress);
+
+      // Create ClobPair contract instance
+      const clobPairABI = [
+        "function getBestBid() external view returns (uint256 price, uint64 amount)",
+        "function getBestAsk() external view returns (uint256 price, uint64 amount)",
+        "function getOrderInfo(bytes32 orderHash) external view returns (tuple(uint8 status, uint64 filledAmount, uint64 remainingAmount))",
+        "function getUserOrders(address user) external view returns (bytes32[] memory)",
+        "function orderHashToId(bytes32) external view returns (uint64)",
+        "function orderIsBid(uint64) external view returns (bool)",
+        "function orderTickIndex(uint64) external view returns (uint256)",
+        "event OrderPlaced(bytes32 indexed orderHash, tuple(address maker, address baseToken, address quoteToken, uint64 baseAmount, uint256 price, bool isSellBase, uint256 expiry, uint256 nonce) order, uint64 orderId)",
+        "event OrderMatched(bytes32 indexed takerOrderHash, bytes32 indexed makerOrderHash, address indexed taker, address maker, uint64 baseAmount, uint256 price)"
+      ];
+      
+      const clobPair = new ethers.Contract(pairAddress, clobPairABI, provider);
+
+      // 1. Check best bid/ask
+      console.log('📊 --- ORDER BOOK STATE ---');
+      try {
+        const [bestBidPrice, bestBidAmount] = await clobPair.getBestBid();
+        console.log('🟢 Best BID:', {
+          price: ethers.formatUnits(bestBidPrice, 18),
+          amount: ethers.formatUnits(bestBidAmount, 6)
+        });
+      } catch (e) {
+        console.log('🟢 Best BID: No bids available');
+      }
+
+      try {
+        const [bestAskPrice, bestAskAmount] = await clobPair.getBestAsk();
+        console.log('🔴 Best ASK:', {
+          price: ethers.formatUnits(bestAskPrice, 18),
+          amount: ethers.formatUnits(bestAskAmount, 6)
+        });
+      } catch (e) {
+        console.log('🔴 Best ASK: No asks available');
+      }
+
+      // 2. Get all OrderPlaced events for this pair
+      console.log('📋 --- ORDER EVENTS ---');
+      const orderFilter = contracts.router.filters.OrderPlaced();
+      const orderEvents = await contracts.router.queryFilter(orderFilter, -2000);
+      
+      console.log(`📦 Total OrderPlaced events: ${orderEvents.length}`);
+      
+      const userOrderEvents = orderEvents.filter(event => 
+        event.args[1].toLowerCase() === account.toLowerCase()
+      );
+      
+      console.log(`👤 User orders: ${userOrderEvents.length}`);
+
+      // 3. Check each user order status
+      for (let i = 0; i < userOrderEvents.length; i++) {
+        const event = userOrderEvents[i];
+        const orderHash = event.args[0];
+        const orderData = event.args[3];
+        
+        console.log(`\n📄 --- ORDER ${i + 1} ---`);
+        console.log('Hash:', orderHash);
+        console.log('Maker:', event.args[1]);
+        console.log('ClobPair:', event.args[2]);
+        console.log('Side:', orderData.isSellBase ? 'SELL' : 'BUY');
+        console.log('Price:', ethers.formatUnits(orderData.price, 18));
+        console.log('Amount:', ethers.formatUnits(orderData.baseAmount, 6));
+        console.log('Expiry:', new Date(Number(orderData.expiry) * 1000).toLocaleString());
+        
+        // Check if order still exists in contract
+        try {
+          const orderId = await clobPair.orderHashToId(orderHash);
+          if (orderId > 0) {
+            console.log('✅ Order exists in contract, ID:', orderId.toString());
+            const isBid = await clobPair.orderIsBid(orderId);
+            const tickIndex = await clobPair.orderTickIndex(orderId);
+            console.log('   Type:', isBid ? 'BID' : 'ASK');
+            console.log('   TickIndex:', tickIndex.toString());
+          } else {
+            console.log('❌ Order NOT found in contract (matched or cancelled)');
+          }
+        } catch (e) {
+          console.log('❌ Error checking order status:', e.message);
+        }
+      }
+
+      // 4. Check for OrderMatched events
+      console.log('\n🤝 --- MATCHING EVENTS ---');
+      try {
+        const matchFilter = clobPair.filters.OrderMatched();
+        const matchEvents = await clobPair.queryFilter(matchFilter, -2000);
+        console.log(`⚡ Total OrderMatched events: ${matchEvents.length}`);
+        
+        matchEvents.forEach((event, i) => {
+          console.log(`Match ${i + 1}:`, {
+            takerHash: event.args[0],
+            makerHash: event.args[1],
+            taker: event.args[2],
+            maker: event.args[3],
+            amount: ethers.formatUnits(event.args[4], 6),
+            price: ethers.formatUnits(event.args[5], 18)
+          });
+        });
+      } catch (e) {
+        console.log('❌ Error fetching match events:', e.message);
+      }
+
+      console.log('\n🎯 --- MATCHING ANALYSIS ---');
+      
+      // Check why orders don't match
+      const buyOrders = userOrderEvents.filter(e => !e.args[3].isSellBase);
+      const sellOrders = userOrderEvents.filter(e => e.args[3].isSellBase);
+      
+      console.log(`🟢 BUY orders: ${buyOrders.length}`);
+      console.log(`🔴 SELL orders: ${sellOrders.length}`);
+      
+      if (buyOrders.length > 0 && sellOrders.length > 0) {
+        const bestBuy = buyOrders.reduce((best, current) => 
+          current.args[3].price > best.args[3].price ? current : best
+        );
+        const bestSell = sellOrders.reduce((best, current) => 
+          current.args[3].price < best.args[3].price ? current : best
+        );
+        
+        const buyPrice = Number(ethers.formatUnits(bestBuy.args[3].price, 18));
+        const sellPrice = Number(ethers.formatUnits(bestSell.args[3].price, 18));
+        
+        console.log(`💰 Best BUY price: ${buyPrice}`);
+        console.log(`💰 Best SELL price: ${sellPrice}`);
+        console.log(`📊 Spread: ${sellPrice - buyPrice}`);
+        
+        if (buyPrice >= sellPrice) {
+          console.log('✅ SHOULD MATCH! Buy price >= Sell price');
+          console.log('🤔 Possible reasons for no match:');
+          console.log('   - Same maker prevention');
+          console.log('   - Orders already matched');
+          console.log('   - Contract bug');
+        } else {
+          console.log('❌ NO MATCH: Buy price < Sell price');
+        }
+      }
+
+      console.log('🔍 ===== DEBUG COMPLETE =====');
+      
       toast({
-        title: "Wallet Not Connected", 
-        description: "Please connect your wallet first",
+        title: "Debug Complete",
+        description: "Check console for detailed logs",
+      });
+
+    } catch (error) {
+      console.error('❌ Debug error:', error);
+      toast({
+        title: "Debug Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const checkOrderBook = async () => {
+    if (!baseTokenAddress || !quoteTokenAddress || !tickSize || !contracts) {
+      toast({
+        title: "Cannot Check Order Book",
+        description: "Please fill all fields first",
         variant: "destructive"
       });
       return;
     }
     
     try {
-      console.log('🔍 Debug Router Call:');
+      setIsSubmitting(true);
       
-      // Test basic router functions
-      console.log('1. Testing getUserNonce...');
-      const nonce = await contracts.router.getUserNonce(account);
-      console.log('✅ User nonce:', nonce.toString());
+      // Get pair address
+      const tickSizeBigInt = BigInt(tickSize);
+      const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, tickSizeBigInt);
       
-      console.log('2. Testing hashOrder...');
-      const testOrder = {
-        maker: account,
-        baseToken: baseTokenAddress || ethers.ZeroAddress,
-        quoteToken: quoteTokenAddress || ethers.ZeroAddress,
-        baseAmount: 1000000000000000000n, // 1 token
-        price: 2500000000000000000000n, // 2500 quote per base
-        isSellBase: false,
-        expiry: BigInt(Math.floor(Date.now() / 1000) + 3600),
-        nonce: nonce
-      };
+      if (pairAddress === ethers.ZeroAddress) {
+      toast({
+          title: "No Pair Found",
+          description: "Trading pair doesn't exist. Create it first.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+      // Enhanced ClobPair contract instance
+      const clobPairABI = [
+        "function getBestBid() view returns (bool exists, uint256 price, uint64 totalBase)",
+        "function getBestAsk() view returns (bool exists, uint256 price, uint64 totalBase)",
+        "function getPriceLevel(uint256 price) view returns (uint64 totalBase, uint64 orderCount)",
+        "function getUserOrders(address user) view returns (bytes32[] memory)",
+        "function getOrderInfo(bytes32 orderHash) view returns (tuple(bytes32 orderHash, uint8 status, uint256 filledBase, uint256 createdAt))",
+        "function getPairInfo() view returns (address baseToken, address quoteToken, uint256 tickSize)"
+      ];
       
-      const orderHash = await contracts.router.hashOrder(testOrder);
-      console.log('✅ Order hash:', orderHash);
+      const clobPair = new ethers.Contract(pairAddress, clobPairABI, provider);
       
-      console.log('3. Testing domain separator...');
-      const domainSep = await contracts.router.domainSeparator();
-      console.log('✅ Domain separator:', domainSep);
+      // Comprehensive check
+      const [bestBid, bestAsk, userOrders, pairInfo] = await Promise.all([
+        clobPair.getBestBid(),
+        clobPair.getBestAsk(),
+        clobPair.getUserOrders(account),
+        clobPair.getPairInfo()
+      ]);
       
-      console.log('4. Testing orderExists...');
-      const exists = await contracts.router.orderExists(orderHash);
-      console.log('✅ Order exists:', exists);
+      console.log('📊 COMPREHENSIVE ORDER BOOK DEBUG:');
+      console.log('  Pair Address:', pairAddress);
+      console.log('  Pair Info:', pairInfo);
+      console.log('  Best Bid:', bestBid);
+      console.log('  Best Ask:', bestAsk);
+      console.log('  User Orders Count:', userOrders.length);
+      console.log('  User Orders:', userOrders);
       
-      // 5. Compare domain separators
-      if (baseTokenAddress && quoteTokenAddress && tickSize) {
-        console.log('5. Comparing Router vs ClobPair domain separators...');
-        try {
-          const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, BigInt(tickSize));
-          console.log('Pair address:', pairAddress);
-          
-          if (pairAddress !== ethers.ZeroAddress) {
-            const pairContract = new ethers.Contract(pairAddress, [
-              "function domainSeparator() view returns (bytes32)"
-            ], signer);
-            
-            const routerDomain = await contracts.router.domainSeparator();
-            const pairDomain = await pairContract.domainSeparator();
-            
-            console.log('🔍 CRITICAL COMPARISON:');
-            console.log('Router domain:', routerDomain);
-            console.log('Pair domain:  ', pairDomain);
-            console.log('Are equal?    ', routerDomain === pairDomain);
-            
-            if (routerDomain !== pairDomain) {
-              console.log('🎯 FOUND THE ISSUE! Domain separators are different!');
-              console.log('🎯 This is why we get "Router: hash mismatch"');
-            } else {
-              console.log('✅ Domain separators match - issue is elsewhere');
-            }
-          } else {
-            console.log('❌ Pair does not exist');
+      // Check specific price level
+      const currentPrice = ethers.parseUnits(price || "2500", 18);
+      try {
+        const priceLevel = await clobPair.getPriceLevel(currentPrice);
+        console.log(`  Price Level at ${price}:`, priceLevel);
+      } catch (levelError) {
+        console.log('  Price level check failed:', levelError.message);
+      }
+      
+      // Check user's order details
+      if (userOrders.length > 0) {
+        console.log('📋 USER ORDER DETAILS:');
+        for (let i = 0; i < Math.min(userOrders.length, 5); i++) {
+          try {
+            const orderInfo = await clobPair.getOrderInfo(userOrders[i]);
+            console.log(`  Order ${i + 1}:`, orderInfo);
+          } catch (orderError) {
+            console.log(`  Order ${i + 1} info failed:`, orderError.message);
           }
-        } catch (domainError) {
-          console.error('❌ Domain comparison failed:', domainError);
         }
       }
       
+      // Result message
+      if (!bestBid.exists && !bestAsk.exists) {
+        if (userOrders.length > 0) {
+          toast({
+            title: "Orders Found But Not in Book! 🤔",
+            description: `You have ${userOrders.length} orders, but they're not showing in the book. They may have been filled or expired.`,
+            variant: "destructive"
+          });
+        } else {
+          toast({
+            title: "Order Book Empty 📖",
+            description: "No orders found. Place the first order to start trading!",
+            variant: "destructive"
+          });
+        }
+      } else {
+        toast({
+          title: "Order Book Found! 📊",
+          description: `Bid: ${bestBid.exists ? ethers.formatUnits(bestBid.price, 18) : 'None'}, Ask: ${bestAsk.exists ? ethers.formatUnits(bestAsk.price, 18) : 'None'}. You have ${userOrders.length} orders.`,
+        });
+      }
+      
     } catch (error) {
-      console.error('❌ Debug router call failed:', error);
+      console.error('Check order book failed:', error);
+      toast({
+        title: "Check Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const checkTransactionHistory = async () => {
+    if (!contracts || !account) {
+      toast({
+        title: "Cannot Check History",
+        description: "Contracts not ready or wallet not connected",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      console.log('🔍 CHECKING TRANSACTION HISTORY:');
+      
+      // Check Router events for this user
+      const routerContract = contracts.router;
+      
+      // Get recent blocks (last 1000 blocks)
+      const currentBlock = await provider.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 1000);
+      
+      console.log(`  Checking blocks ${fromBlock} to ${currentBlock}`);
+      
+      // Get OrderPlaced events
+      const orderPlacedFilter = routerContract.filters.OrderPlaced(null, account);
+      const orderPlacedEvents = await routerContract.queryFilter(orderPlacedFilter, fromBlock);
+      
+      // Get OrderCancelled events  
+      const orderCancelledFilter = routerContract.filters.OrderCancelled(null, account);
+      const orderCancelledEvents = await routerContract.queryFilter(orderCancelledFilter, fromBlock);
+      
+      console.log('📋 ROUTER EVENTS:');
+      console.log('  OrderPlaced events:', orderPlacedEvents.length);
+      console.log('  OrderCancelled events:', orderCancelledEvents.length);
+      
+      // Show recent events
+      orderPlacedEvents.forEach((event, i) => {
+        console.log(`  OrderPlaced ${i + 1}:`, {
+          orderHash: event.args.orderHash,
+          maker: event.args.maker,
+          clobPair: event.args.clobPair,
+          blockNumber: event.blockNumber,
+          transactionHash: event.transactionHash
+        });
+      });
+      
+      // Check if we have any pairs from factory
+      const allPairs = await contracts.factory.getAllPairs();
+      console.log('🏭 FACTORY INFO:');
+      console.log('  Total pairs:', allPairs.length);
+      console.log('  All pairs:', allPairs);
+      
+      // Check each pair for events
+      for (const pairAddress of allPairs.slice(0, 3)) { // Check first 3 pairs
+        try {
+          const clobPairABI = [
+            "function getUserOrders(address user) view returns (bytes32[] memory)",
+            "function getPairInfo() view returns (address baseToken, address quoteToken, uint256 tickSize)"
+          ];
+          
+          const clobPair = new ethers.Contract(pairAddress, clobPairABI, provider);
+          const [userOrders, pairInfo] = await Promise.all([
+            clobPair.getUserOrders(account),
+            clobPair.getPairInfo()
+          ]);
+          
+          console.log(`📊 PAIR ${pairAddress.slice(0, 8)}...:`);
+          console.log('  Pair Info:', pairInfo);
+          console.log('  Your Orders:', userOrders.length);
+          
+          if (userOrders.length > 0) {
+            console.log('  Order Hashes:', userOrders);
+          }
+          
+        } catch (pairError) {
+          console.log(`  Error checking pair ${pairAddress}:`, pairError.message);
+        }
+      }
+      
+      // Summary
+      const totalOrders = orderPlacedEvents.length;
+      const totalCancelled = orderCancelledEvents.length;
+      const activeOrders = totalOrders - totalCancelled;
+      
+      toast({
+        title: "Transaction History 📜",
+        description: `Found ${totalOrders} placed orders, ${totalCancelled} cancelled. ${activeOrders} potentially active.`,
+      });
+      
+    } catch (error) {
+      console.error('Check transaction history failed:', error);
+      toast({
+        title: "History Check Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const setupTestEnvironment = async () => {
+    if (!contracts || !account) {
+      toast({
+        title: "Setup Failed",
+        description: "Contracts not ready or wallet not connected",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      
+      // Use mock ERC20 addresses for testing (these should be deployed mock tokens)
+      const mockBaseToken = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; // Example mock token 1
+      const mockQuoteToken = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Example mock token 2
+      const testTickSize = "1000000000000000000"; // 1e18
+      
+      setBaseTokenAddress(mockBaseToken);
+      setQuoteTokenAddress(mockQuoteToken);
+      setTickSize(testTickSize);
+      
+      toast({
+        title: "Test Environment Setup",
+        description: "Mock tokens loaded. Now check if pair exists or create it.",
+      });
+      
+    } catch (error) {
+      console.error('Setup test environment failed:', error);
+      toast({
+        title: "Setup Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -598,10 +763,6 @@ const TradingForm = () => {
 
     try {
       setIsSubmitting(true);
-      console.log('🏭 Creating new trading pair...');
-      console.log('  Base:', baseTokenAddress);
-      console.log('  Quote:', quoteTokenAddress);
-      console.log('  TickSize:', tickSize);
 
       const tickSizeBigInt = BigInt(tickSize);
       const tx = await contracts.factory.createClobPair(baseTokenAddress, quoteTokenAddress, tickSizeBigInt);
@@ -689,6 +850,34 @@ const TradingForm = () => {
       </div>
 
       <div className="space-y-4 flex-1">
+        {/* Test Environment Setup */}
+        <div className="mb-4 space-y-2">
+          <Button
+            onClick={setupTestEnvironment}
+            disabled={!isConnected || isSubmitting}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-all"
+          >
+            🧪 Setup Test Environment
+          </Button>
+          <Button
+            onClick={checkTransactionHistory}
+            disabled={!isConnected || isSubmitting}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-all"
+          >
+            📜 Check Transaction History
+          </Button>
+          <Button
+            onClick={debugMatchingEngine}
+            disabled={!isConnected || isSubmitting}
+            className="w-full bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg text-sm font-medium transition-all"
+          >
+            🔍 Debug Matching Engine
+          </Button>
+          <p className="text-xs text-slate-400 mt-1 text-center">
+            Debug tools for testing
+          </p>
+        </div>
+
         {/* Base Token Address */}
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -734,17 +923,18 @@ const TradingForm = () => {
             <Button
               onClick={checkPairExists}
               disabled={isCheckingPair || !isConnected}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all"
             >
               {isCheckingPair ? 'Checking...' : 'Check Pair'}
             </Button>
             <Button
-              onClick={debugRouterCall}
-              disabled={!isConnected}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all"
+              onClick={checkOrderBook}
+              disabled={isSubmitting || !isConnected}
+              className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-lg text-xs font-medium transition-all"
             >
-              Debug
+              📊 Order Book
             </Button>
+
           </div>
           
           {/* Pair Status Indicator */}
