@@ -5,12 +5,12 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import OrderBook from '@/components/OrderBook';
 import TradingForm from '@/components/TradingForm';
-import PriceChart from '@/components/PriceChart';
+// import PriceChart from '@/components/PriceChart'; // Temporarily commented out
 import MarketStats from '@/components/MarketStats';
 import RecentTrades from '@/components/RecentTrades';
 import WalletConnection from '@/components/WalletConnection';
 import UserOrders from '@/components/UserOrders';
-import OrderHistory from '@/components/OrderHistory';
+// import OrderHistory from '@/components/OrderHistory'; // Temporarily commented out
 import { useWeb3 } from '../hooks/useWeb3';
 
 const TradingDashboard = () => {
@@ -69,7 +69,7 @@ const TradingDashboard = () => {
       </div>
 
       {/* Main Trading Interface */}
-      <main className="flex-grow grid grid-cols-1 lg:grid-cols-6 gap-4 min-h-0">
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
         {/* Order Book */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -80,15 +80,15 @@ const TradingDashboard = () => {
           <OrderBook currentPrice={currentPrice} />
         </motion.div>
 
-        {/* Price Chart */}
-        <motion.div
+        {/* Price Chart - Temporarily Hidden for cleaner UI */}
+        {/* <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
           className="lg:col-span-2 min-h-0"
         >
           <PriceChart selectedPair={selectedPair} currentPrice={currentPrice} />
-        </motion.div>
+        </motion.div> */}
 
         {/* Trading Form */}
         <motion.div
@@ -110,15 +110,15 @@ const TradingDashboard = () => {
           <UserOrders />
         </motion.div>
 
-        {/* Order History */}
-        <motion.div
+        {/* Order History - Temporarily Hidden for cleaner UI */}
+        {/* <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.5 }}
           className="lg:col-span-1 min-h-0"
         >
           <OrderHistory />
-        </motion.div>
+        </motion.div> */}
       </main>
 
       {/* Recent Trades */}

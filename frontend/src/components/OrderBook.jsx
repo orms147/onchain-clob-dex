@@ -65,9 +65,22 @@ const OrderBook = ({ currentPrice }) => {
           }
         });
         
-        // Sort orders: Buy orders by price DESC, Sell orders by price ASC
-        buyOrdersTemp.sort((a, b) => b.price - a.price);
-        sellOrdersTemp.sort((a, b) => a.price - b.price);
+        // Professional OrderBook Layout (like Binance/Coinbase):
+        // 
+        // ╔═══════ SELL ORDERS (ASK) ═══════╗
+        // ║  $2600  <- Highest Ask (top)     ║  
+        // ║  $2550                           ║
+        // ║  $2510  <- Lowest Ask (bottom)   ║ 
+        // ╠═══════ CURRENT PRICE ═══════════╣
+        // ║  $2500  <- Spread                ║
+        // ╠═══════ BUY ORDERS (BID) ════════╣  
+        // ║  $2490  <- Highest Bid (top)     ║
+        // ║  $2450                           ║
+        // ║  $2400  <- Lowest Bid (bottom)   ║
+        // ╚══════════════════════════════════╝
+        //
+        sellOrdersTemp.sort((a, b) => b.price - a.price); // DESC: Highest ask at top
+        buyOrdersTemp.sort((a, b) => b.price - a.price);  // DESC: Highest bid at top
         
         setBuyOrders(buyOrdersTemp.slice(0, 10)); // Show top 10
         setSellOrders(sellOrdersTemp.slice(0, 10)); // Show top 10
@@ -94,8 +107,8 @@ const OrderBook = ({ currentPrice }) => {
       initial={{ opacity: 0, x: type === 'buy' ? -20 : 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: index * 0.02 }}
-      className={`order-book-item grid grid-cols-3 gap-2 py-1 px-2 text-xs cursor-pointer ${
-        type === 'buy' ? 'buy-order hover:bg-green-500/10' : 'sell-order hover:bg-red-500/10'
+      className={`order-book-item grid grid-cols-3 gap-1 py-0.5 px-2 text-xs cursor-pointer hover:bg-slate-700/20 ${
+        type === 'buy' ? 'buy-order' : 'sell-order'
       }`}
     >
       <div className={`font-mono ${type === 'buy' ? 'text-green-400' : 'text-red-400'}`}>
@@ -112,9 +125,9 @@ const OrderBook = ({ currentPrice }) => {
 
   return (
     <div className="glass-effect rounded-xl p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Order Book</h2>
-        <div className="flex items-center space-x-2 text-xs text-slate-400">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-base font-semibold text-white">Order Book</h2>
+        <div className="flex items-center space-x-3 text-xs text-slate-500">
           <span>Price</span>
           <span>Amount</span>
           <span>Total</span>
@@ -122,11 +135,11 @@ const OrderBook = ({ currentPrice }) => {
       </div>
 
       <div className="flex-1 overflow-hidden">
-        {/* Sell Orders */}
-        <div className="h-1/2 overflow-y-auto">
-          <div className="grid grid-cols-3 gap-2 text-xs text-slate-500 mb-2 px-2">
-            <div>Price (USDC)</div>
-            <div className="text-right">Amount (ETH)</div>
+        {/* Sell Orders - ASK (Higher prices at top, farthest from spread) */}
+        <div className="h-1/2 overflow-y-auto border-b border-slate-700/50">
+          <div className="grid grid-cols-3 gap-1 text-xs text-slate-500 mb-1 px-2 sticky top-0 bg-slate-900/80 backdrop-blur-sm py-1">
+            <div className="text-red-400 font-medium">ASK Price</div>
+            <div className="text-right">Amount</div>
             <div className="text-right">Total</div>
           </div>
           
@@ -136,7 +149,7 @@ const OrderBook = ({ currentPrice }) => {
                 Đang tải...
               </div>
             ) : sellOrders.length > 0 ? (
-              sellOrders.slice(0, 10).reverse().map((order, index) => (
+              sellOrders.slice(0, 10).map((order, index) => (
                 <OrderRow key={order.id} order={order} type="sell" index={index} />
               ))
             ) : (
@@ -150,9 +163,9 @@ const OrderBook = ({ currentPrice }) => {
         {/* Current Price */}
         <motion.div
           animate={{ 
-            boxShadow: currentPrice > 2450 ? '0 0 20px rgba(34, 197, 94, 0.5)' : '0 0 20px rgba(239, 68, 68, 0.5)'
+            boxShadow: currentPrice > 2450 ? '0 0 15px rgba(34, 197, 94, 0.3)' : '0 0 15px rgba(239, 68, 68, 0.3)'
           }}
-          className="my-4 p-3 rounded-lg bg-slate-800/50 border border-slate-600"
+          className="my-2 p-2 rounded-lg bg-slate-800/50 border border-slate-600"
         >
           <div className="flex items-center justify-center space-x-2">
             {currentPrice > 2450 ? (
@@ -166,13 +179,18 @@ const OrderBook = ({ currentPrice }) => {
               ${currentPrice.toFixed(2)}
             </span>
           </div>
-          <div className="text-center text-xs text-slate-400 mt-1">
+          <div className="text-center text-xs text-slate-500">
             Current Price
           </div>
         </motion.div>
 
-        {/* Buy Orders */}
+        {/* Buy Orders - BID (Higher prices at top, closest to spread) */}
         <div className="h-1/2 overflow-y-auto">
+          <div className="grid grid-cols-3 gap-1 text-xs text-slate-500 mb-1 px-2 sticky top-0 bg-slate-900/80 backdrop-blur-sm py-1">
+            <div className="text-green-400 font-medium">BID Price</div>
+            <div className="text-right">Amount</div>
+            <div className="text-right">Total</div>
+          </div>
           <AnimatePresence>
             {loading ? (
               <div className="text-center text-slate-400 py-4">
