@@ -108,7 +108,17 @@ export function createLimitOrder(
         maker,
         baseToken,
         quoteToken,
-        baseAmount: ethers.parseUnits(baseAmount, 6), // Assuming 6 decimals for base amount (uint64)
+        baseAmount: (() => {
+            // Use 6 decimals instead of 18 to avoid uint64 overflow
+            // uint64 max = 18,446,744,073,709,551,615 (about 18.4 * 10^18)
+            // With 6 decimals, max amount = 18,446,744,073,709 (18.4 trillion tokens)
+            const amount = ethers.parseUnits(baseAmount, 6);
+            const MAX_UINT64 = (1n << 64n) - 1n;
+            if (amount > MAX_UINT64) {
+                throw new Error(`Base amount ${ethers.formatUnits(amount, 6)} exceeds uint64 max (${ethers.formatUnits(MAX_UINT64, 6)} tokens)`);
+            }
+            return amount;
+        })(),
         price: ethers.parseUnits(price, 18), // Price with 18 decimals
         isSellBase,
         expiry: BigInt(expiry),
@@ -117,10 +127,18 @@ export function createLimitOrder(
 }
 
 /**
- * Parse token amount with proper decimals
+ * Parse token amount with proper decimals (safe for uint64)
  */
-export function parseTokenAmount(amount: string, decimals: number): bigint {
-    return ethers.parseUnits(amount, decimals);
+export function parseTokenAmount(amount: string, decimals: number = 6): bigint {
+    const parsed = ethers.parseUnits(amount, decimals);
+    if (decimals === 6) {
+        // Check uint64 overflow for base amounts
+        const MAX_UINT64 = (1n << 64n) - 1n;
+        if (parsed > MAX_UINT64) {
+            throw new Error(`Amount ${amount} with ${decimals} decimals exceeds uint64 max`);
+        }
+    }
+    return parsed;
 }
 
 /**

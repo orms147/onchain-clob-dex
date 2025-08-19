@@ -1,3 +1,7 @@
+// Contract Configuration
+// IMPORTANT: Base token amounts use 6 decimals (not 18) to avoid uint64 overflow
+// Price uses 18 decimals for precision
+
 export const VAULT_ABI = 
 [
   {
@@ -741,8 +745,7 @@ export const VAULT_ABI =
   }
 ]
 
-export const FACTORY_ABI = 
-[
+export const FACTORY_ABI = [
   {
     "inputs": [
       {

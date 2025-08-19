@@ -3,8 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, TrendingUp, TrendingDown, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
+import { useWeb3 } from '../hooks/useWeb3';
+import { useContracts } from '../hooks/useContracts';
+import { ethers } from 'ethers';
 
-const RecentTrades = ({ selectedPair }) => {
+const RecentTrades = () => {
   const [trades, setTrades] = useState([]);
   const [filter, setFilter] = useState('all');
 
@@ -47,7 +50,7 @@ const RecentTrades = ({ selectedPair }) => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [selectedPair]);
+  }, []);
 
   const filteredTrades = trades.filter(trade => {
     if (filter === 'all') return true;
@@ -69,7 +72,7 @@ const RecentTrades = ({ selectedPair }) => {
         <div className="flex items-center space-x-2">
           <Clock className="h-5 w-5 text-blue-400" />
           <h2 className="text-lg font-semibold text-white">Recent Trades</h2>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
+          <span className="text-sm text-slate-400">(Manual Entry)</span>
         </div>
         
         <div className="flex items-center space-x-2">

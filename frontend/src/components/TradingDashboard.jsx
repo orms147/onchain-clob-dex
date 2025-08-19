@@ -10,36 +10,20 @@ import MarketStats from '@/components/MarketStats';
 import RecentTrades from '@/components/RecentTrades';
 import WalletConnection from '@/components/WalletConnection';
 import UserOrders from '@/components/UserOrders';
+import OrderHistory from '@/components/OrderHistory';
 import { useWeb3 } from '../hooks/useWeb3';
 
 const TradingDashboard = () => {
-  const [selectedPair, setSelectedPair] = useState('ETH/USDC');
-  const [currentPrice, setCurrentPrice] = useState(2456.78);
-  const [priceChange, setPriceChange] = useState(2.34);
+  const [selectedPair, setSelectedPair] = useState('');
+  const [currentPrice, setCurrentPrice] = useState(0);
+  const [priceChange, setPriceChange] = useState(0);
+  
   const { isConnected } = useWeb3();
 
-  const tradingPairs = [
-    { symbol: 'ETH/USDC', price: 2456.78, change: 2.34 },
-    { symbol: 'BTC/USDC', price: 43250.12, change: -1.23 },
-    { symbol: 'LINK/USDC', price: 14.56, change: 5.67 },
-    { symbol: 'UNI/USDC', price: 6.78, change: -0.89 }
-  ];
-
   useEffect(() => {
-    const interval = setInterval(() => {
-      const randomChange = (Math.random() - 0.5) * 10;
-      setCurrentPrice(prev => Math.max(0, prev + randomChange));
-      setPriceChange(randomChange);
-    }, 3000);
-
-    return () => clearInterval(interval);
+    setCurrentPrice(2500);
+    setPriceChange(0);
   }, []);
-
-  const handlePairSelect = (pair) => {
-    setSelectedPair(pair.symbol);
-    setCurrentPrice(pair.price);
-    setPriceChange(pair.change);
-  };
 
   return (
     <div className="min-h-screen p-4 flex flex-col space-y-4">
@@ -59,20 +43,7 @@ const TradingDashboard = () => {
             </div>
             
             <div className="flex items-center space-x-2">
-              <select 
-                value={selectedPair}
-                onChange={(e) => {
-                  const pair = tradingPairs.find(p => p.symbol === e.target.value);
-                  if (pair) handlePairSelect(pair);
-                }}
-                className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                {tradingPairs.map(pair => (
-                  <option key={pair.symbol} value={pair.symbol}>
-                    {pair.symbol}
-                  </option>
-                ))}
-              </select>
+              <span className="text-slate-400 text-sm">Manual Order Entry</span>
             </div>
           </div>
 
@@ -88,26 +59,17 @@ const TradingDashboard = () => {
             </div>
             
             <WalletConnection />
-            
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => toast({ title: "🚧 Tính năng cài đặt chưa được triển khai—nhưng đừng lo! Bạn có thể yêu cầu nó trong lần nhắc tiếp theo! 🚀" })}
-              className="border-slate-600 hover:bg-slate-700"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
           </div>
         </div>
       </motion.header>
 
       {/* Market Stats */}
       <div className="flex-shrink-0">
-        <MarketStats selectedPair={selectedPair} currentPrice={currentPrice} />
+        <MarketStats currentPrice={currentPrice} />
       </div>
 
       {/* Main Trading Interface */}
-      <main className="flex-grow grid grid-cols-1 lg:grid-cols-5 gap-4 min-h-0">
+      <main className="flex-grow grid grid-cols-1 lg:grid-cols-6 gap-4 min-h-0">
         {/* Order Book */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -135,10 +97,7 @@ const TradingDashboard = () => {
           transition={{ delay: 0.3 }}
           className="lg:col-span-1 min-h-0"
         >
-          <TradingForm
-            selectedPair={selectedPair}
-            currentPrice={currentPrice}
-          />
+          <TradingForm />
         </motion.div>
 
         {/* User Orders */}
@@ -150,6 +109,16 @@ const TradingDashboard = () => {
         >
           <UserOrders />
         </motion.div>
+
+        {/* Order History */}
+        <motion.div
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.5 }}
+          className="lg:col-span-1 min-h-0"
+        >
+          <OrderHistory />
+        </motion.div>
       </main>
 
       {/* Recent Trades */}
@@ -159,7 +128,7 @@ const TradingDashboard = () => {
         transition={{ delay: 0.4 }}
         className="flex-shrink-0"
       >
-        <RecentTrades selectedPair={selectedPair} />
+        <RecentTrades />
       </motion.footer>
     </div>
   );

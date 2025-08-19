@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Users } from 'lucide-react';
 
-const MarketStats = ({ selectedPair, currentPrice }) => {
+const MarketStats = ({ currentPrice }) => {
   const stats = [
     {
       label: '24h Volume',

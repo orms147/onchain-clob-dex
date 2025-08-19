@@ -1,17 +1,17 @@
 // Contract addresses configuration
 export const CONTRACT_ADDRESSES = {
-  VAULT: import.meta.env.VITE_VAULT_ADDRESS || "0x5FbDB2315678afecb367f032d93F642f64180aa3",
-  FACTORY: import.meta.env.VITE_FACTORY_ADDRESS || "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", 
-  ROUTER: import.meta.env.VITE_ROUTER_ADDRESS || "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+  VAULT: import.meta.env.VITE_VAULT_ADDRESS || "0x3824dAa3dc31De43B594c8D231347023Ab61D48f",
+  FACTORY: import.meta.env.VITE_FACTORY_ADDRESS || "0x0367709cA277f50095BB42Bf4c9426CDb2C98EDb", 
+  ROUTER: import.meta.env.VITE_ROUTER_ADDRESS || "0x274035DDFFF3D88Bd752604E44095B1Cf4f7Da1F"
 };
 
-// Token addresses configuration
-export const TOKEN_ADDRESSES = {
-  ETH: import.meta.env.VITE_ETH_TOKEN_ADDRESS || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-  USDC: import.meta.env.VITE_USDC_TOKEN_ADDRESS || "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-  BTC: import.meta.env.VITE_BTC_TOKEN_ADDRESS || "0x90F79bf6EB2c4f870365E785982E1f101E93b906",
-  LINK: import.meta.env.VITE_LINK_TOKEN_ADDRESS || "0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65",
-  UNI: import.meta.env.VITE_UNI_TOKEN_ADDRESS || "0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc"
+// Token address to symbol mapping - ADD YOUR TOKENS HERE
+export const TOKEN_SYMBOLS = {
+  // Add your actual token addresses and symbols here
+  // Example:
+  // "0x1234...": "ETH",
+  // "0x5678...": "USDC",
+  // "0x9abc...": "BTC"
 };
 
 // Network configuration
@@ -20,22 +20,13 @@ export const NETWORK_CONFIG = {
   NETWORK_NAME: import.meta.env.VITE_NETWORK_NAME || "localhost"
 };
 
-// Trading pairs configuration
+// Trading pairs configuration - only for UI display
 export const TRADING_PAIRS = [
-  { symbol: 'ETH/USDC', baseToken: 'ETH', quoteToken: 'USDC' },
-  { symbol: 'BTC/USDC', baseToken: 'BTC', quoteToken: 'USDC' },
-  { symbol: 'LINK/USDC', baseToken: 'LINK', quoteToken: 'USDC' },
-  { symbol: 'UNI/USDC', baseToken: 'UNI', quoteToken: 'USDC' }
+  { symbol: 'ETH/USDC', baseToken: 'ETH', quoteToken: 'USDC', price: 2456.78, change: 2.34 },
+  { symbol: 'BTC/USDC', baseToken: 'BTC', quoteToken: 'USDC', price: 43250.12, change: -1.23 },
+  { symbol: 'LINK/USDC', baseToken: 'LINK', quoteToken: 'USDC', price: 14.56, change: 5.67 },
+  { symbol: 'UNI/USDC', baseToken: 'UNI', quoteToken: 'USDC', price: 6.78, change: -0.89 }
 ];
-
-// Get token address by symbol
-export function getTokenAddress(symbol: string): string {
-  const address = TOKEN_ADDRESSES[symbol as keyof typeof TOKEN_ADDRESSES];
-  if (!address) {
-    throw new Error(`Token address not found for symbol: ${symbol}`);
-  }
-  return address;
-}
 
 // Get trading pair configuration
 export function getTradingPair(pairSymbol: string) {
@@ -44,6 +35,12 @@ export function getTradingPair(pairSymbol: string) {
     throw new Error(`Trading pair not found: ${pairSymbol}`);
   }
   return pair;
+}
+
+// Get token symbol from address
+export function getTokenSymbol(address: string): string {
+  const symbol = TOKEN_SYMBOLS[address.toLowerCase() as keyof typeof TOKEN_SYMBOLS];
+  return symbol || `TOKEN_${address.slice(-4).toUpperCase()}`;
 }
 
 // Validate contract addresses

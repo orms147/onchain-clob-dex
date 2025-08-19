@@ -98,15 +98,56 @@ Orders được ký theo chuẩn EIP-712 với domain:
 }
 ```
 
+## 🔥 New Features - Dynamic Trading Pairs
+
+### ✨ What's New:
+- **Dynamic Token Detection**: Automatically fetches supported tokens from Vault contract
+- **Trading Pair Manager**: Create new trading pairs directly from UI
+- **Smart Contract Integration**: Real-time data from blockchain
+- **Getting Started Guide**: Step-by-step setup instructions
+- **Improved UX**: Better error handling and loading states
+
+### 🚀 How to Use Dynamic Pairs:
+
+#### 1. Connect Your Wallet
+```bash
+# Make sure you're on the correct network
+# Default: localhost:8545 (Anvil/Hardhat)
+```
+
+#### 2. Add Supported Tokens to Vault
+As the Vault owner, you need to add tokens first:
+```solidity
+// Call this function on Vault contract
+vault.addSupportedToken(tokenAddress);
+```
+
+#### 3. Create Trading Pairs
+- Click the Settings (⚙️) button in the header
+- Select base and quote tokens from your supported tokens
+- Set tick size (minimum price increment)
+- Click "Create Trading Pair"
+
+#### 4. Start Trading
+- Select your trading pair from the dropdown
+- Place limit orders
+- Monitor order book and trades
+
 ## Development Notes
 
-### Cần hoàn thiện:
-1. **Order Book Real-time**: Hiện tại order book trống, cần implement event listening
-2. **Order History**: Lịch sử orders và trades
-3. **Balance Display**: Hiển thị balance tokens
-4. **Token Approval**: UI cho approve tokens vào Vault
-5. **Error Handling**: Xử lý lỗi tốt hơn
-6. **Loading States**: Loading states cho các operations
+### ✅ Completed Features:
+1. **Dynamic Token Loading**: Fetches supported tokens from Vault
+2. **Trading Pair Creation**: UI for creating new pairs
+3. **Real-time Pair Management**: Auto-refresh after pair creation
+4. **Smart Error Handling**: Better validation and user feedback
+5. **Getting Started Guide**: Interactive setup wizard
+
+### 🚧 Still Need Implementation:
+1. **Order Book Real-time**: Event listening for live order book updates
+2. **Order History**: Complete trade history tracking
+3. **Balance Display**: Real user balance from Vault
+4. **Token Approval UI**: One-click approve flow
+5. **Price Oracle Integration**: Real market prices
 
 ### Token Approval
 Trước khi đặt orders, users cần approve tokens cho Vault contract:

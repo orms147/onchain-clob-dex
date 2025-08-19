@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useWeb3 } from '../hooks/useWeb3';
 import { useContracts } from '../hooks/useContracts';
+import { ethers } from 'ethers';
 
 const UserOrders = () => {
   const [orders, setOrders] = useState([]);
@@ -22,18 +23,94 @@ const UserOrders = () => {
 
       try {
         setLoading(true);
-        // For now, we'll show empty orders since we need to implement
-        // order tracking from contract events
-        setOrders([]);
+        console.log('🔍 Fetching user orders for account:', account);
+        
+        // Get OrderPlaced events for this user
+        const filter = contracts.router.filters.OrderPlaced(null, account);
+        const events = await contracts.router.queryFilter(filter, -100); // Last 100 blocks
+        
+        console.log('📋 Found OrderPlaced events:', events.length);
+        
+        const userOrders = events.map((event, index) => {
+          const args = event.args;
+          const orderData = args[3]; // Order struct
+          
+          return {
+            id: args[0] || `order-${index}`, // orderHash
+            maker: args[1] || account,
+            clobPair: args[2] || 'Unknown',
+            baseToken: orderData?.baseToken || 'Unknown',
+            quoteToken: orderData?.quoteToken || 'Unknown', 
+            baseAmount: orderData?.baseAmount ? 
+              parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4) : '0', // 6 decimals
+            price: orderData?.price ? 
+              parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4) : '0', // 18 decimals
+            side: orderData?.isSellBase ? 'sell' : 'buy',
+            status: 'active',
+            timestamp: Date.now() - (index * 60000), // Mock timestamps
+            blockNumber: event.blockNumber,
+            rawBaseAmount: orderData?.baseAmount?.toString() || '0',
+            rawPrice: orderData?.price?.toString() || '0'
+          };
+        });
+        
+        console.log('✅ Processed user orders:', userOrders);
+        setOrders(userOrders);
+        
       } catch (error) {
-        console.error('Error fetching user orders:', error);
+        console.error('❌ Error fetching user orders:', error);
         setOrders([]);
+        toast({
+          title: "Lỗi tải lệnh",
+          description: "Không thể tải danh sách lệnh của bạn",
+          variant: "destructive"
+        });
       } finally {
         setLoading(false);
       }
     };
 
     fetchUserOrders();
+    
+    // Set up real-time order updates
+    let orderPlacedListener;
+    if (contracts?.router && account) {
+      const filter = contracts.router.filters.OrderPlaced(null, account);
+      orderPlacedListener = (orderHash, maker, clobPair, orderData) => {
+        console.log('🆕 New order placed:', { orderHash, maker, clobPair, orderData });
+        
+        const newOrder = {
+          id: orderHash,
+          maker,
+          clobPair,
+          baseToken: orderData.baseToken,
+          quoteToken: orderData.quoteToken,
+          baseAmount: parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4),
+          price: parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4),
+          side: orderData.isSellBase ? 'sell' : 'buy',
+          status: 'active',
+          timestamp: Date.now(),
+          blockNumber: 'pending',
+          rawBaseAmount: orderData.baseAmount.toString(),
+          rawPrice: orderData.price.toString()
+        };
+        
+        setOrders(prev => [newOrder, ...prev]);
+        
+        toast({
+          title: "✅ Lệnh đã được đặt",
+          description: `${newOrder.side.toUpperCase()} ${newOrder.baseAmount} tokens tại giá ${newOrder.price}`,
+        });
+      };
+      
+      contracts.router.on(filter, orderPlacedListener);
+    }
+    
+    return () => {
+      if (orderPlacedListener && contracts?.router) {
+        contracts.router.off('OrderPlaced', orderPlacedListener);
+      }
+    };
   }, [contracts, account]);
 
   const handleCancelOrder = async (order) => {
