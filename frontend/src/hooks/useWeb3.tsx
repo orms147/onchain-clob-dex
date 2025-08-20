@@ -55,6 +55,45 @@ export const useWeb3 = () => {
         }
     };
 
+    const requestAccountSwitch = async () => {
+        try {
+            if (window.ethereum) {
+                // Request user to select account
+                await window.ethereum.request({
+                    method: 'wallet_requestPermissions',
+                    params: [{ eth_accounts: {} }]
+                });
+                
+                // After permission, get accounts again
+                const provider = new ethers.BrowserProvider(window.ethereum);
+                const accounts = await provider.send('eth_requestAccounts', []);
+                
+                if (accounts && accounts.length > 0) {
+                    const signer = await provider.getSigner();
+                    const network = await provider.getNetwork();
+
+                    setProvider(provider);
+                    setSigner(signer);
+                    setAccount(accounts[0]);
+                    setIsConnected(true);
+                    setChainId(network.chainId);
+
+                    toast({
+                        title: "Account Switched! 🔄",
+                        description: `Now using ${accounts[0].slice(0, 6)}...${accounts[0].slice(-4)}`,
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error switching account:', error);
+            toast({
+                title: "Account Switch Failed",
+                description: "Failed to switch account. Please try again.",
+                variant: "destructive",
+            });
+        }
+    };
+
     const disconnectWallet = () => {
         setProvider(null);
         setSigner(null);
@@ -123,6 +162,7 @@ export const useWeb3 = () => {
         isConnected,
         chainId,
         connectWallet,
-        disconnectWallet
+        disconnectWallet,
+        requestAccountSwitch
     };
 }

@@ -493,6 +493,154 @@ const TradingForm = () => {
             : `${side === 'buy' ? 'Buy' : 'Sell'} ${side === 'buy' ? 'with' : 'for'} ${side === 'buy' ? total : amount}`
           }
         </Button>
+
+        {/* Debug Button */}
+        <Button
+          type="button"
+          onClick={async () => {
+            if (!baseTokenAddress || !quoteTokenAddress || !tickSize || !contracts) {
+              toast({
+                title: "Cannot Debug",
+                description: "Please fill token addresses and check pair exists first",
+                variant: "destructive"
+              });
+              return;
+            }
+
+            try {
+              alert('🔍 Debug started! Check console...');
+              console.log('🔍 === DEBUGGING ORDER BOOK ===');
+
+              // Get pair address
+              const pairAddress = await contracts.factory.getClobPair(baseTokenAddress, quoteTokenAddress, BigInt(tickSize));
+              
+              if (pairAddress === ethers.ZeroAddress) {
+                console.log('❌ No trading pair found');
+                toast({
+                  title: "No Pair Found",
+                  description: "Trading pair doesn't exist",
+                  variant: "destructive"
+                });
+                return;
+              }
+
+              console.log('📍 ClobPair Address:', pairAddress);
+
+              // Create ClobPair contract for debugging
+              const clobPairABI = [
+                "function getBestBid() external view returns (uint256 price, uint64 amount)",
+                "function getBestAsk() external view returns (uint256 price, uint64 amount)"
+              ];
+              
+              const clobPair = new ethers.Contract(pairAddress, clobPairABI, provider);
+
+              // Check best prices
+              console.log('\n📊 --- ORDER BOOK STATE ---');
+              try {
+                const [bidPrice, bidAmount] = await clobPair.getBestBid();
+                console.log('🟢 Best BID:', {
+                  price: ethers.formatUnits(bidPrice, 18),
+                  amount: ethers.formatUnits(bidAmount, 6),
+                  rawPrice: bidPrice.toString(),
+                  rawAmount: bidAmount.toString()
+                });
+              } catch (e) {
+                console.log('🟢 Best BID: None available');
+              }
+
+              try {
+                const [askPrice, askAmount] = await clobPair.getBestAsk();
+                console.log('🔴 Best ASK:', {
+                  price: ethers.formatUnits(askPrice, 18),
+                  amount: ethers.formatUnits(askAmount, 6),
+                  rawPrice: askPrice.toString(),
+                  rawAmount: askAmount.toString()
+                });
+              } catch (e) {
+                console.log('🔴 Best ASK: None available');
+              }
+
+              // Get recent orders
+              console.log('\n📋 --- RECENT ORDER EVENTS ---');
+              const orderFilter = contracts.router.filters.OrderPlaced();
+              const orderEvents = await contracts.router.queryFilter(orderFilter, -500);
+              
+              console.log(`📦 Total OrderPlaced events: ${orderEvents.length}`);
+              
+              // Show last 3 orders
+              const recentOrders = orderEvents.slice(-3);
+              recentOrders.forEach((event, i) => {
+                const order = event.args[3];
+                console.log(`\n📄 Order ${i + 1}:`);
+                console.log('  Hash:', event.args[0]);
+                console.log('  Maker:', event.args[1]);
+                console.log('  Side:', order.isSellBase ? 'SELL' : 'BUY');
+                console.log('  Price:', ethers.formatUnits(order.price, 18));
+                console.log('  Amount:', ethers.formatUnits(order.baseAmount, 6));
+              });
+
+              // Check if last 2 orders should match
+              if (recentOrders.length >= 2) {
+                const lastTwo = recentOrders.slice(-2);
+                const [event1, event2] = lastTwo;
+                const [order1, order2] = [event1.args[3], event2.args[3]];
+                
+                console.log('\n🎯 --- MATCHING ANALYSIS ---');
+                const price1 = Number(ethers.formatUnits(order1.price, 18));
+                const price2 = Number(ethers.formatUnits(order2.price, 18));
+                const sameMaker = event1.args[1] === event2.args[1];
+                
+                console.log('Order 1:', {
+                  side: order1.isSellBase ? 'SELL' : 'BUY',
+                  price: price1,
+                  maker: event1.args[1]
+                });
+                console.log('Order 2:', {
+                  side: order2.isSellBase ? 'SELL' : 'BUY', 
+                  price: price2,
+                  maker: event2.args[1]
+                });
+
+                console.log('\nMatching Conditions:');
+                console.log('❓ Same maker?', sameMaker ? '❌ YES (prevents matching)' : '✅ NO');
+                console.log('❓ Opposite sides?', order1.isSellBase !== order2.isSellBase ? '✅ YES' : '❌ NO');
+                
+                const shouldMatch = (order1.isSellBase && !order2.isSellBase && price2 >= price1) ||
+                                  (!order1.isSellBase && order2.isSellBase && price1 >= price2);
+                console.log('❓ Prices cross?', shouldMatch ? '✅ YES' : '❌ NO');
+                
+                if (shouldMatch && !sameMaker) {
+                  console.log('🔥 SHOULD MATCH! But they didn\'t...');
+                  console.log('🤔 Possible reasons:');
+                  console.log('   - Self-matching prevention working');
+                  console.log('   - Orders already matched');
+                  console.log('   - Contract matching bug');
+                } else {
+                  console.log('⭕ Should NOT match:', sameMaker ? 'same maker' : 'prices don\'t cross');
+                }
+              }
+
+              console.log('\n🎉 Debug complete!');
+              
+              toast({
+                title: "Debug Complete",
+                description: "Check browser console (F12) for detailed analysis",
+              });
+
+            } catch (error) {
+              console.error('❌ Debug failed:', error);
+              toast({
+                title: "Debug Failed",
+                description: error.message,
+                variant: "destructive"
+              });
+            }
+          }}
+          disabled={!isConnected || !baseTokenAddress || !quoteTokenAddress}
+          className="w-full mt-2 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-all disabled:bg-slate-600"
+        >
+          🔍 Debug Order Book
+        </Button>
       </form>
     </motion.div>
   );

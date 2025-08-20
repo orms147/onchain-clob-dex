@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, ChevronDown, Copy, ExternalLink, LogOut } from 'lucide-react';
+import { Wallet, ChevronDown, Copy, ExternalLink, LogOut, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/use-toast';
 import { useWeb3 } from '../hooks/useWeb3';
 
 const WalletConnection = () => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const { account, isConnected, connectWallet, disconnectWallet } = useWeb3();
+  const { account, isConnected, connectWallet, disconnectWallet, requestAccountSwitch } = useWeb3();
 
 
 
@@ -128,6 +128,10 @@ const WalletConnection = () => {
               <div className="w-3 h-3 bg-green-400 rounded-full"></div>
               <span className="text-white font-semibold">Ví đã kết nối</span>
             </div>
+            <div className="bg-slate-800/50 rounded-lg p-2 mb-3">
+              <div className="text-xs text-slate-400">Current Account:</div>
+              <div className="text-sm text-white font-mono">{account?.slice(0, 8)}...{account?.slice(-6)}</div>
+            </div>
             <div className="bg-slate-800/50 rounded-lg p-3">
               <div className="flex items-center justify-between">
                 <span className="font-mono text-sm text-slate-300">{account || 'Unknown'}</span>
@@ -153,25 +157,40 @@ const WalletConnection = () => {
               </div>
             </div>
 
-            <div className="flex space-x-2">
+            <div className="flex flex-col space-y-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => toast({ title: "🚧 Chế độ xem explorer chưa được triển khai—nhưng đừng lo! Bạn có thể yêu cầu nó trong lần nhắc tiếp theo! 🚀" })}
-                className="flex-1 border-slate-600 hover:bg-slate-700"
+                onClick={() => {
+                  requestAccountSwitch();
+                  setIsDropdownOpen(false);
+                }}
+                className="w-full border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
               >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Explorer
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Switch Account
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDisconnect}
-                className="flex-1 border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
-              >
-                <LogOut className="h-4 w-4 mr-2" />
-                Ngắt kết nối
-              </Button>
+              
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toast({ title: "🚧 Chế độ xem explorer chưa được triển khai—nhưng đừng lo! Bạn có thể yêu cầu nó trong lần nhắc tiếp theo! 🚀" })}
+                  className="flex-1 border-slate-600 hover:bg-slate-700"
+                >
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Explorer
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDisconnect}
+                  className="flex-1 border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Ngắt kết nối
+                </Button>
+              </div>
             </div>
           </div>
         </motion.div>
