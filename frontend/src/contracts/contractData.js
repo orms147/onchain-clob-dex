@@ -1110,6 +1110,37 @@ export const ROUTER_ABI =
         "type": "address"
       },
       {
+        "indexed": false,
+        "internalType": "uint64",
+        "name": "filledAmount",
+        "type": "uint64"
+      }
+    ],
+    "name": "OrderFilled",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "bytes32",
+        "name": "orderHash",
+        "type": "bytes32"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "maker",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "clobPair",
+        "type": "address"
+      },
+      {
         "components": [
           {
             "internalType": "address",

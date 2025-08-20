@@ -25,9 +25,9 @@ interface IClobPair {
      * @notice Places a limit order. Can result in immediate partial/complete fills against resting opposite side.
      * @param order Limit order 
      * @return orderHash Hash of placed order
-     * @return orderId Internal order ID for tracking
+     * @return filledAmount Amount of base token filled from the order
      */
-    function placeLimitOrder(OrderStructs.LimitOrder calldata order) external returns (bytes32 orderHash, uint64 orderId);
+    function placeLimitOrder(OrderStructs.LimitOrder calldata order) external returns (bytes32 orderHash, uint64 filledAmount);
 
     /**
      * @notice Cancel a resting order by hash (only maker). Will unlock remaining locked balance via Vault.
