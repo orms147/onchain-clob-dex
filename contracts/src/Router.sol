@@ -59,6 +59,13 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
         uint256 orderCount
     );
 
+    event OrderFilled(
+        bytes32 indexed orderHash,
+        address indexed maker,
+        address indexed clobPair,
+        uint64 filledAmount
+    );
+
     // ---- Constructor ----
     constructor(address _factory) EIP712("ClobRouter", "1") {
         require(_factory != address(0), "Router: invalid factory");
@@ -122,29 +129,25 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
         revert("Router: pair not found");
     }
 
-    function _findClobPairWithTickSize(address baseToken, address quoteToken, uint256 price) 
+    function _findClobPair(address baseToken, address quoteToken) 
         internal 
         view 
         returns (address clobPair) 
     {
-        // Try common tick sizes first
-        uint256[] memory commonTickSizes = new uint256[](5);
-        commonTickSizes[0] = 1e12; // 0.000001 for high precision
-        commonTickSizes[1] = 1e15; // 0.001 
-        commonTickSizes[2] = 1e16; // 0.01
-        commonTickSizes[3] = 1e17; // 0.1
-        commonTickSizes[4] = 1e18; // 1.0
+        // Get all pairs and find the one with matching tokens
+        address[] memory allPairs = IClobFactory(factory).getAllPairs();
         
-        for (uint256 i = 0; i < commonTickSizes.length; i++) {
-            if (price % commonTickSizes[i] == 0) {
-                clobPair = IClobFactory(factory).getClobPair(baseToken, quoteToken, commonTickSizes[i]);
-                if (clobPair != address(0)) {
-                    return clobPair;
-                }
+        for (uint256 i = 0; i < allPairs.length; i++) {
+            address pair = allPairs[i];
+            (address pairBase, address pairQuote,) = IClobPair(pair).getPairInfo();
+            
+            if ((pairBase == baseToken && pairQuote == quoteToken) ||
+                (pairBase == quoteToken && pairQuote == baseToken)) {
+                return pair;
             }
         }
         
-        revert("Router: no compatible pair found for price");
+        revert("Router: pair not found");
     }
 
     // ---- Public Functions ----
@@ -156,6 +159,7 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
         OrderStructs.LimitOrder calldata order,
         bytes calldata signature
     ) external override nonReentrant validOrder(order) returns (bytes32 orderHash) {
+        // Hash and validate order
         orderHash = _hashLimitOrder(order);
         
         // Verify the maker is the message sender or signature is valid
@@ -163,23 +167,27 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
             require(signature.length > 0, "Router: signature required");
             _verifySignature(orderHash, signature, order.maker);
         }
-        // If maker == msg.sender, no signature verification needed
 
-        // Verify nonce
+        // Verify and update nonce
         require(order.nonce >= userNonces[order.maker], "Router: invalid nonce");
         userNonces[order.maker] = order.nonce + 1;
 
         // Find the appropriate ClobPair
-        address clobPair = _findClobPairWithTickSize(order.baseToken, order.quoteToken, order.price);
+        address clobPair = _findClobPair(order.baseToken, order.quoteToken);
+        
+        // Verify price matches pair's tick size
+        (, , uint256 pairTickSize) = IClobPair(clobPair).getPairInfo();
+        require(order.price % pairTickSize == 0, "Router: invalid price tick");
 
-        // Store order hash to maker mapping for later cancellation
+        // Store order hash to maker mapping for cancellation
         orderToMaker[orderHash] = order.maker;
 
-        // Place order in the ClobPair - FIXED: Removed hash mismatch check
-        (bytes32 returnedHash,) = IClobPair(clobPair).placeLimitOrder(order);
-        // Removed: require(returnedHash == orderHash, "Router: hash mismatch"); // FIXED: Domain separator mismatch issue
-
+        // Forward order to ClobPair for matching
+        (bytes32 returnedHash, uint64 filledAmount) = IClobPair(clobPair).placeLimitOrder(order);
+        
         emit OrderPlaced(orderHash, order.maker, clobPair, order);
+        emit OrderFilled(orderHash, order.maker, clobPair, filledAmount);
+        
         return orderHash;
     }
 
@@ -205,7 +213,7 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
         require(storedMaker == order.maker, "Router: unauthorized cancellation");
 
         // Find the appropriate ClobPair
-        address clobPair = _findClobPairWithTickSize(order.baseToken, order.quoteToken, order.price);
+        address clobPair = _findClobPair(order.baseToken, order.quoteToken);
 
         // Cancel order in the ClobPair
         IClobPair(clobPair).cancelOrder(order);
@@ -263,7 +271,7 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
             userNonces[orders[i].maker] = orders[i].nonce + 1;
 
             // Find appropriate ClobPair
-            address clobPair = _findClobPairWithTickSize(orders[i].baseToken, orders[i].quoteToken, orders[i].price);
+            address clobPair = _findClobPair(orders[i].baseToken, orders[i].quoteToken);
 
             // Store order hash to maker mapping
             orderToMaker[orderHash] = orders[i].maker;
@@ -304,7 +312,7 @@ contract Router is IRouter, EIP712, ReentrancyGuard {
             require(storedMaker == orders[i].maker, "Router: unauthorized cancellation");
 
             // Find appropriate ClobPair
-            address clobPair = _findClobPairWithTickSize(orders[i].baseToken, orders[i].quoteToken, orders[i].price);
+            address clobPair = _findClobPair(orders[i].baseToken, orders[i].quoteToken);
 
             // Cancel order
             IClobPair(clobPair).cancelOrder(orders[i]);

@@ -320,6 +320,24 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         uint256 limitIdx = _tickIndex(order.price);
         uint64 remaining = order.baseAmount;   
 
+        // Log initial state
+        emit DebugPriceInfo(
+            order.price,
+            limitIdx,
+            tickSize,
+            !order.isSellBase
+        );
+
+        // Log order book state before matching
+        (uint64 bidLen, uint64 bidBase, uint64 askLen, uint64 askBase) = this.getOrderBookState(order.price);
+        emit DebugOrderBook(
+            order.price,
+            bidLen,
+            bidBase,
+            askLen,
+            askBase
+        );
+
         if (order.isSellBase) {
             remaining = _matchAgainstBids(order.maker, remaining, limitIdx);
         } else {
@@ -336,6 +354,16 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
 
         while (remaining > 0) {
             (bool found, uint256 idx) = _findBestBid(minPriceIdx);
+            
+            // Log matching attempt
+            emit DebugMatching(
+                keccak256(abi.encodePacked(taker, baseToSell, minPriceIdx)),
+                minPriceIdx * tickSize,
+                remaining,
+                found,
+                found ? (idx * tickSize) : 0
+            );
+
             if (!found) break;
             remaining = _fillAtLevel(bids, idx, taker, remaining, false);
         }
@@ -348,6 +376,16 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
 
         while (remaining > 0) {
             (bool found, uint256 idx) = _findBestAsk(maxPriceIdx);
+            
+            // Log matching attempt
+            emit DebugMatching(
+                keccak256(abi.encodePacked(taker, baseToBuy, maxPriceIdx)),
+                maxPriceIdx * tickSize,
+                remaining,
+                found,
+                found ? (idx * tickSize) : 0
+            );
+
             if (!found) break;
             remaining = _fillAtLevel(asks, idx, taker, remaining, true);
         }
@@ -449,9 +487,9 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
 
     // ---- Public Interface ----
     function placeLimitOrder(OrderStructs.LimitOrder calldata order) 
-        external nonReentrant validPrice(order.price) returns (bytes32 orderHash, uint64 orderId) 
+        external nonReentrant validPrice(order.price) returns (bytes32 orderHash, uint64 filledAmount) 
     {
-        require(order.maker == msg.sender, "INVALID_MAKER");
+        // NOTE: msg.sender is Router, not the user. Router has already validated the maker.
         require(order.baseToken == baseToken && order.quoteToken == quoteToken, "INVALID_TOKENS");
         require(order.baseAmount > 0, "ZERO_AMOUNT");
         require(!_isExpired(order.expiry), "EXPIRED");
@@ -471,7 +509,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         }
 
         // Try to match against existing orders
-        uint64 filledAmount = _matchOrder(order);
+        filledAmount = _matchOrder(order);
         uint64 remainingAmount = order.baseAmount - filledAmount;
 
         // If there's remaining amount, add to book
@@ -480,6 +518,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
             remainingOrder.baseAmount = remainingAmount;
 
             uint256 idx = _tickIndex(order.price);
+            uint64 orderId;
             
             if (order.isSellBase) {
                 orderId = _enqueue(asks, idx, remainingOrder, orderHash);
@@ -497,7 +536,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
             emit OrderPlaced(orderHash, order, orderId);
         }
         
-        return (orderHash, orderId);
+        return (orderHash, filledAmount);
     }
 
     function cancelOrderByHash(bytes32 orderHash) external nonReentrant onlyMaker(orderHash) {
@@ -585,5 +624,67 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         
         totalBase = bidLevel.totalBaseAmount + askLevel.totalBaseAmount;
         orderCount = bidLevel.length + askLevel.length;
+    }
+
+    // Debug Functions
+    function getOrderBookState(uint256 price) external view returns (
+        uint64 bidLength,
+        uint64 bidTotalBase,
+        uint64 askLength, 
+        uint64 askTotalBase
+    ) {
+        uint256 idx = _tickIndex(price);
+        LevelQueue storage bidLevel = bids.levels[idx];
+        LevelQueue storage askLevel = asks.levels[idx];
+        
+        return (
+            bidLevel.length,
+            bidLevel.totalBaseAmount,
+            askLevel.length,
+            askLevel.totalBaseAmount
+        );
+    }
+
+    function getSSTState(uint256 startPrice, uint256 endPrice) external view returns (
+        uint64[] memory bidValues,
+        uint64[] memory askValues
+    ) {
+        uint256 startIdx = _tickIndex(startPrice);
+        uint256 endIdx = _tickIndex(endPrice);
+        uint256 size = endIdx - startIdx + 1;
+        
+        bidValues = new uint64[](size);
+        askValues = new uint64[](size);
+        
+        for(uint256 i = 0; i < size; i++) {
+            uint32 sstIdx = _mapTickIndexToSST(startIdx + i);
+            bidValues[i] = bids.tree.get(sstIdx);
+            askValues[i] = asks.tree.get(sstIdx);
+        }
+    }
+
+    function getOrderDetails(bytes32 orderHash) external view returns (
+        bool exists,
+        bool isBid,
+        uint256 price,
+        uint64 remainingAmount,
+        address maker
+    ) {
+        uint64 orderId = orderHashToId[orderHash];
+        if (orderId == 0) return (false, false, 0, 0, address(0));
+
+        isBid = orderIsBid[orderId];
+        uint256 idx = orderTickIndex[orderId];
+        OrderNode storage node = isBid ? 
+            bids.levels[idx].orders[orderId] : 
+            asks.levels[idx].orders[orderId];
+
+        return (
+            true,
+            isBid,
+            node.price,
+            node.remainingBase,
+            node.maker
+        );
     }
 }
