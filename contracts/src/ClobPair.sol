@@ -20,6 +20,7 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     address public immutable quoteToken;
     uint256 public immutable tickSize;
     address public immutable vault;
+    address public immutable router;
     
     // ---- Constants ----
     uint32 private constant MAX_TICK_INDEX = 32767;
@@ -60,29 +61,51 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     mapping(uint64 => uint256) public orderTickIndex;   //orderId -> tickIndex - Changed from uint32 to uint256
     mapping(address => bytes32[]) private userOrders; //user -> orderHashes
 
+    // ---- Debug Events ----
+    event DebugPriceInfo(uint256 price, uint256 idx, uint256 tickSize, bool isBidSide);
+    event DebugOrderBook(
+        uint256 price,
+        uint64 bidLength,
+        uint64 bidTotalBase,
+        uint64 askLength,
+        uint64 askTotalBase
+    );
+    event DebugMatching(
+        bytes32 key,
+        uint256 limitPrice,
+        uint64 remaining,
+        bool found,
+        uint256 matchedPrice
+    );
+
     // ---- Constants for EIP-712 ----
     bytes32 private constant LIMIT_ORDER_TYPEHASH = keccak256(
         "LimitOrder(address maker,address baseToken,address quoteToken,uint64 baseAmount,uint256 price,bool isSellBase,uint256 expiry,uint256 nonce)"
     );
 
     // ---- Constructor ----
-    constructor(address _baseToken, address _quoteToken, uint256 _tickSize, address _vault) 
+    constructor(address _baseToken, address _quoteToken, uint256 _tickSize, address _vault, address _router) 
         EIP712("ClobRouter", "1") 
     {
         require(_baseToken != address(0) && _quoteToken != address(0), "ZERO_ADDRESS");
         require(_baseToken != _quoteToken, "IDENTICAL_TOKENS");
         require(_tickSize > 0, "ZERO_TICK_SIZE");
         require(_vault != address(0), "ZERO_VAULT");
+        require(_router != address(0), "ZERO_ROUTER");
 
         baseToken = _baseToken;
         quoteToken = _quoteToken;
         tickSize = _tickSize;
         vault = _vault;
+        router = _router;
     }
 
     // ---- Modifiers ----
     modifier validPrice(uint256 price) {
         require(price > 0 && price % tickSize == 0, "INVALID_PRICE");
+        // Prevent SST index overflow/collision
+        uint256 idx = _tickIndex(price);
+        require(idx <= MAX_TICK_INDEX, "PRICE_OUT_OF_RANGE");
 
         _;
     }
@@ -90,6 +113,11 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
     modifier onlyMaker(bytes32 orderHash) {
         OrderNode storage node = _getOrderNode(orderHash);
         require(node.maker == msg.sender, "NOT_MAKER");
+        _;
+    }
+
+    modifier onlyRouter() {
+        require(msg.sender == router, "NOT_ROUTER");
         _;
     }
 
@@ -558,9 +586,29 @@ contract ClobPair is IClobPair, ReentrancyGuard, EIP712 {
         emit OrderCancelled(orderHash, node.maker, orderId);
     }
 
-    function cancelOrder(OrderStructs.LimitOrder calldata order) external {
+    function cancelOrder(OrderStructs.LimitOrder calldata order) external onlyRouter {
         bytes32 orderHash = _hashOrder(order);
-        this.cancelOrderByHash(orderHash);
+        uint64 orderId = orderHashToId[orderHash];
+        require(orderId != 0, "ORDER_NOT_FOUND");
+
+        bool isBid = orderIsBid[orderId];
+        uint256 idx = orderTickIndex[orderId];
+
+        // Remove from book
+        OrderNode memory node = isBid ?
+            _removeOrder(bids, idx, orderId) :
+            _removeOrder(asks, idx, orderId);
+
+        // Ensure router cancels the correct maker's order
+        require(node.maker == order.maker, "MAKER_MISMATCH");
+
+        // Unlock funds
+        _unlockFunds(node);
+
+        // Clean up tracking
+        _cleanupOrder(orderId, orderHash, node.maker);
+
+        emit OrderCancelled(orderHash, node.maker, orderId);
     }
 
     // ---- View Functions ----
