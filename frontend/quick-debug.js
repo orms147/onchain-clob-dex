@@ -5,7 +5,7 @@ console.log('🔍 === QUICK DEBUG ===');
 // Your current setup
 const baseToken = "0x33060d3fdd66A5B713f483d689A2C42d";
 const quoteToken = "0xf46c8c9774aD593fb61a85636b02f337";  
-const tickSize = "10000000000000000";
+const tickSize = "1000000000000000000";
 
 async function quickDebug() {
     try {

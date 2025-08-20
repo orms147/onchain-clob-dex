@@ -43,7 +43,7 @@ async function simpleDebug() {
         // Your contract addresses (UPDATE THESE)
         const baseToken = "0x33060d3fdd66A5B713f483d689A2C42d";
         const quoteToken = "0xf46c8c9774aD593fb61a85636b02f337";
-        const tickSize = "10000000000000000";
+        const tickSize = "1000000000000000000";
         
         console.log('🪙 Token Setup:');
         console.log('  Base:', baseToken);
@@ -104,8 +104,8 @@ async function simpleDebug() {
 
         // Simple ClobPair ABI
         const pairABI = [
-            "function getBestBid() view returns (uint256,uint64)",
-            "function getBestAsk() view returns (uint256,uint64)"
+            "function getBestBid() view returns (bool,uint256,uint64)",
+            "function getBestAsk() view returns (bool,uint256,uint64)"
         ];
 
         let clobPair;
@@ -123,9 +123,10 @@ async function simpleDebug() {
         try {
             const bestBid = await clobPair.getBestBid();
             console.log('🟢 Best BID:', {
-                price: ethers.formatUnits(bestBid[0], 18),
-                amount: ethers.formatUnits(bestBid[1], 6),
-                raw: [bestBid[0].toString(), bestBid[1].toString()]
+                exists: bestBid[0],
+                price: ethers.formatUnits(bestBid[1], 18),
+                amount: ethers.formatUnits(bestBid[2], 6),
+                raw: [bestBid[0], bestBid[1].toString(), bestBid[2].toString()]
             });
         } catch (e) {
             console.log('🟢 Best BID: Error or None -', e.message);
@@ -134,9 +135,10 @@ async function simpleDebug() {
         try {
             const bestAsk = await clobPair.getBestAsk();
             console.log('🔴 Best ASK:', {
-                price: ethers.formatUnits(bestAsk[0], 18),
-                amount: ethers.formatUnits(bestAsk[1], 6),
-                raw: [bestAsk[0].toString(), bestAsk[1].toString()]
+                exists: bestAsk[0],
+                price: ethers.formatUnits(bestAsk[1], 18),
+                amount: ethers.formatUnits(bestAsk[2], 6),
+                raw: [bestAsk[0], bestAsk[1].toString(), bestAsk[2].toString()]
             });
         } catch (e) {
             console.log('🔴 Best ASK: Error or None -', e.message);

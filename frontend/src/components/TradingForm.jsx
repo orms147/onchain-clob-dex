@@ -13,7 +13,7 @@ const TradingForm = () => {
   const [side, setSide] = useState('buy');
   const [baseTokenAddress, setBaseTokenAddress] = useState('');
   const [quoteTokenAddress, setQuoteTokenAddress] = useState('');
-  const [tickSize, setTickSize] = useState('10000000000000000');
+  const [tickSize, setTickSize] = useState('1000000000000000000');
   const [price, setPrice] = useState('');
   const [amount, setAmount] = useState('');
   const [total, setTotal] = useState('');
@@ -349,7 +349,7 @@ const TradingForm = () => {
               value={tickSize}
               onChange={(e) => setTickSize(e.target.value)}
               className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-mono"
-              placeholder="10000000000000000"
+              placeholder="1000000000000000000"
             />
             <Button
               type="button"
@@ -528,8 +528,8 @@ const TradingForm = () => {
 
               // Create ClobPair contract for debugging
               const clobPairABI = [
-                "function getBestBid() external view returns (uint256 price, uint64 amount)",
-                "function getBestAsk() external view returns (uint256 price, uint64 amount)"
+                "function getBestBid() external view returns (bool exists, uint256 price, uint64 amount)",
+                "function getBestAsk() external view returns (bool exists, uint256 price, uint64 amount)"
               ];
               
               const clobPair = new ethers.Contract(pairAddress, clobPairABI, provider);
@@ -537,8 +537,9 @@ const TradingForm = () => {
               // Check best prices
               console.log('\n📊 --- ORDER BOOK STATE ---');
               try {
-                const [bidPrice, bidAmount] = await clobPair.getBestBid();
+                const [bidExists, bidPrice, bidAmount] = await clobPair.getBestBid();
                 console.log('🟢 Best BID:', {
+                  exists: bidExists,
                   price: ethers.formatUnits(bidPrice, 18),
                   amount: ethers.formatUnits(bidAmount, 6),
                   rawPrice: bidPrice.toString(),
@@ -549,8 +550,9 @@ const TradingForm = () => {
               }
 
               try {
-                const [askPrice, askAmount] = await clobPair.getBestAsk();
+                const [askExists, askPrice, askAmount] = await clobPair.getBestAsk();
                 console.log('🔴 Best ASK:', {
+                  exists: askExists,
                   price: ethers.formatUnits(askPrice, 18),
                   amount: ethers.formatUnits(askAmount, 6),
                   rawPrice: askPrice.toString(),
