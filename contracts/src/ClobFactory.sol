@@ -4,17 +4,24 @@ pragma solidity ^0.8.26;
 import "./ClobPair.sol";
 import "./interfaces/IClobFactory.sol";
 import "./interfaces/IVault.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract ClobFactory is IClobFactory {
+contract ClobFactory is IClobFactory, Ownable {
     address public immutable vault;
+    address public router;
 
     // key: base -> quote -> tickSize -> pair
     mapping(address => mapping(address => mapping(uint256 => address))) public pairs;
     address[] private _allPairs;
 
-    constructor (address _vault) {
+    constructor (address _vault) Ownable(msg.sender) {
         require(_vault != address(0), "VAULT_ZERO");
         vault = _vault;
+    }
+
+    function setRouter(address _router) external onlyOwner {
+        require(_router != address(0), "ROUTER_ZERO");
+        router = _router;
     }
 
     function createClobPair(address base, address quote, uint256 tickSize) external returns (address pair) {
@@ -29,7 +36,8 @@ contract ClobFactory is IClobFactory {
         (address a, address b) = base < quote ? (base, quote) : (quote, base);
         require(pairs[a][b][tickSize] == address(0), "EXISTS");
 
-        pair = address(new ClobPair(a, b, tickSize, vault));
+        require(router != address(0), "ROUTER_NOT_SET");
+        pair = address(new ClobPair(a, b, tickSize, vault, router));
 
         // Auto-authorize the ClobPair in Vault (requires ClobFactory to be Vault owner)
         IVault(vault).authorizeExecutor(pair, true);
