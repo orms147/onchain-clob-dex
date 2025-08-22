@@ -7,6 +7,15 @@ pragma solidity ^0.8.26;
  * @dev Simplified LimitOrder to remove redundant fields (quoteAmount, tickSize, salt) and add FILLED status.
  */
 library OrderStructs {
+    uint256 internal constant PRICE_SCALE = 1e18;
+
+    bytes32 internal constant LIMIT_ORDER_TYPEHASH = keccak256(
+        "LimitOrder(address maker,address baseToken,address quoteToken,uint64 baseAmount,uint256 price,bool isSellBase,uint256 expiry,uint256 nonce)"
+    );
+
+    bytes32 internal constant CANCEL_ORDER_TYPEHASH = keccak256(
+        "CancelOrder(bytes32 orderHash,uint256 nonce)"
+    );
     /**
      * @notice Enum for order status lifecycle
      * @dev FILLED is separated instead of inferred for clearer indexer UX
