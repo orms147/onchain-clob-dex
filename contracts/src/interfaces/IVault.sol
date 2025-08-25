@@ -3,26 +3,28 @@ pragma solidity ^0.8.26;
 
 /**
  * @title IVault
- * @notice Interface for the Vault contract, which manages and settles assets.
+ * @notice Central ledger for user balances and trading settlements.
  */
 interface IVault {
-    
+    // --- Events ---
+
     event Deposited(address indexed user, address indexed token, uint256 amount);
     event Withdrawn(address indexed user, address indexed token, uint256 amount);
     event BalanceLocked(address indexed user, address indexed token, uint256 amount);
     event BalanceUnlocked(address indexed user, address indexed token, uint256 amount);
     event TransferExecuted(address indexed from, address indexed to, address indexed token, uint256 amount);
+    event ExecutorAuthorized(address indexed executor, bool authorized, uint256 executionTime);
+    event TokenSupportChanged(address indexed token, bool supported, uint256 executionTime);
+    event EmergencyWithdrawProposed(address indexed token, address indexed to, uint256 amount, uint256 executionTime);
 
-    /// @notice Deposit tokens into vault
+    // --- User I/O ---
+
     function deposit(address token, uint256 amount) external;
-    /// @notice Withdraw tokens from vault
     function withdraw(address token, uint256 amount) external;
 
-    /// @notice batching
     function batchDeposit(address[] calldata tokens, uint256[] calldata amounts) external;
     function batchWithdraw(address[] calldata tokens, uint256[] calldata amounts) external;
 
-    /// @notice Deposit with EIP-712 permit signature
     function depositWithPermit(
         address token,
         uint256 amount,
@@ -32,7 +34,6 @@ interface IVault {
         bytes32 s
     ) external;
 
-    /// @notice Batch deposit with EIP-712 permit signatures
     function batchDepositWithPermit(
         address[] calldata tokens,
         uint256[] calldata amounts,
@@ -42,39 +43,68 @@ interface IVault {
         bytes32[] calldata s
     ) external;
 
-    /// @notice Lock user's balance for trading (called by authorized ClobPairs)
+    // --- Trading hooks (executor-only) ---
+
     function lockBalance(address user, address token, uint256 amount) external;
-    /// @notice Unlock user's balance (when order is cancelled or partially filled)
     function unlockBalance(address user, address token, uint256 amount) external;
 
-    /// @notice Execute transfer between users during trade settlement
+    /**
+     * @notice Transfer tokens internally from locked balance of `from` to available balance of `to`.
+     * @dev Must be called only by authorized executors (e.g., ClobPairs) during settlement.
+     */
     function executeTransfer(address from, address to, address token, uint256 amount) external;
 
-    /// @notice Get user's total balance for a token
-    function getTotalBalance(address user, address token) external view returns (uint256 totalBalance);
-    /// @notice Get user's available balance for trading
-    function getAvailableBalance(address user, address token) external view returns (uint256 availableBalance);
-    /// @notice Get user's locked balance in active orders
-    function getLockedBalance(address user, address token) external view returns (uint256 lockedBalance);
-    
-    /// @notice Check if a token is supported
-    function isSupportedToken(address token) external view returns (bool);
-    /// @notice Check if an address is an authorized executor
-    function isExecutor(address executor) external view returns (bool);
+    // --- Admin (timelock-protected) ---
 
+    /**
+     * @notice Propose authorizing or revoking an executor.
+     */
+    function proposeAuthorizeExecutor(address executor, bool isAuthorized) external;
 
-    /// @notice Authorize/revoke executor permissions
-    function authorizeExecutor(address executor, bool isAuthorized) external;
-    /// @notice Revoke executor permissions
-    function revokeExecutor(address executor) external;
+    /**
+     * @notice Execute a pending executor authorization.
+     */
+    function executeAuthorizeExecutor(address executor, bool isAuthorized) external;
 
-    /// @notice Pause vault operations
+    /**
+     * @notice Propose adding a supported token.
+     */
+    function proposeAddSupportedToken(address token) external;
+
+    /**
+     * @notice Execute adding a supported token.
+     */
+    function executeAddSupportedToken(address token) external;
+
+    /**
+     * @notice Propose removing a supported token.
+     */
+    function proposeRemoveSupportedToken(address token) external;
+
+    /**
+     * @notice Execute removing a supported token.
+     */
+    function executeRemoveSupportedToken(address token) external;
+
+    /**
+     * @notice Propose an emergency withdrawal.
+     */
+    function proposeEmergencyWithdraw(address token, address to, uint256 amount) external;
+
+    /**
+     * @notice Execute an emergency withdrawal (requires pause).
+     */
+    function executeEmergencyWithdraw(address token, address to, uint256 amount) external;
+
     function pause() external;
-    /// @notice Unpause vault operations
-    function unpause() external;    //Openzeppelin
-    
-    /// @notice Add supported token for trading
-    function addSupportedToken(address token) external;
-    /// @notice Remove supported token from trading
-    function removeSupportedToken(address token) external;
+    function unpause() external;
+
+    // --- Views ---
+
+    function getTotalBalance(address user, address token) external view returns (uint256 totalBalance);
+    function getAvailableBalance(address user, address token) external view returns (uint256 availableBalance);
+    function getLockedBalance(address user, address token) external view returns (uint256 lockedBalance);
+
+    function isSupportedToken(address token) external view returns (bool);
+    function isExecutor(address executor) external view returns (bool);
 }

@@ -5,16 +5,24 @@ import "../libraries/OrderStructs.sol";
 
 /**
  * @title IRouter
- * @notice Interface for Router contract - main entry point for users
- * @dev Responsible for signature validation and routing orders to appropriate ClobPair
+ * @notice User entry-point: performs EIP-712 validation and routes orders to ClobPair.
  */
 interface IRouter {
+    // --- Events ---
+
+    event OrderPlaced(bytes32 indexed orderHash, address indexed maker, address indexed clobPair, OrderStructs.LimitOrder order);
+    event OrderCancelled(bytes32 indexed orderHash, address indexed maker, address indexed clobPair);
+    event BatchOrdersPlaced(address indexed maker, uint256 orderCount);
+    event BatchOrdersCancelled(address indexed maker, uint256 orderCount);
+    event BatchFailed(uint256 index, string reason);
+
+    // --- Mutations ---
 
     /**
-     * @notice Place a limit order
-     * @param order Limit order data
-     * @param signature EIP-712 signature from maker for this order
-     * @return orderHash Hash of the placed order
+     * @notice Place a limit order.
+     * @param order EIP-712 order
+     * @param signature Maker signature if msg.sender != maker
+     * @return orderHash EIP-712 digest
      */
     function placeLimitOrder(
         OrderStructs.LimitOrder calldata order,
@@ -22,9 +30,7 @@ interface IRouter {
     ) external returns (bytes32 orderHash);
 
     /**
-     * @notice Cancel a pending limit order
-     * @param order Original limit order data to cancel
-     * @param signature Maker's signature for this cancellation action
+     * @notice Cancel via original order struct (supports maker-signed cancel).
      */
     function cancelOrder(
         OrderStructs.LimitOrder calldata order,
@@ -32,9 +38,7 @@ interface IRouter {
     ) external;
 
     /**
-     * @notice Place multiple limit orders in a single transaction
-     * @param orders Array of limit orders
-     * @param signatures Array of corresponding signatures
+     * @notice Batch place multiple orders.
      */
     function batchPlaceLimitOrders(
         OrderStructs.LimitOrder[] calldata orders,
@@ -42,9 +46,7 @@ interface IRouter {
     ) external;
 
     /**
-     * @notice Cancel multiple limit orders in a single transaction
-     * @param orders Array of orders to cancel
-     * @param signatures Array of corresponding signatures
+     * @notice Batch cancel multiple orders.
      */
     function batchCancelOrders(
         OrderStructs.LimitOrder[] calldata orders,
@@ -52,25 +54,53 @@ interface IRouter {
     ) external;
 
     /**
-     * @notice Get the ClobFactory address that Router is using
-     * @return factoryAddress Address of the ClobFactory contract
+     * @notice Cancel by order hash if still indexed as active.
+     */
+    function cancelOrderByHash(bytes32 orderHash) external;
+
+    /**
+     * @notice Clean up expired orders on a specific ClobPair.
+     * @param clobPair The ClobPair contract to clean up
+     * @param price The price level to clean up
+     * @param maxOrders Maximum number of orders to process
+     * @return cleaned Number of orders cleaned
+     * @dev Should be non-reentrant to prevent reentrancy attacks.
+     */
+    function cleanupExpiredOrders(
+        address clobPair, 
+        uint256 price, 
+        uint64 maxOrders
+    ) external returns (uint64 cleaned);
+
+    // --- Views ---
+
+    /**
+     * @notice Factory address backing this router.
      */
     function getFactory() external view returns (address factoryAddress);
 
     /**
-     * @notice Returns EIP-712 domain separator used for hashing & signing
+     * @notice EIP-712 domain separator.
      */
     function domainSeparator() external view returns (bytes32);
 
     /**
-     * @notice Compute typed data hash for a limit order (struct hash -> digest)
-     * @dev Equivalent to keccak256("\x19\x01" || domainSeparator || structHash(order))
+     * @notice Compute EIP-712 digest for an order.
      */
     function hashOrder(OrderStructs.LimitOrder calldata order) external view returns (bytes32);
 
     /**
-     * @notice Cancel by order hash without passing full struct (if stored mapping exists)
-     * @param orderHash The order hash to cancel
+     * @notice Next expected nonce for a maker.
      */
-    function cancelOrderByHash(bytes32 orderHash) external;
+    function getUserNonce(address user) external view returns (uint256);
+
+    /**
+     * @notice Maker currently indexed for an order hash (if active).
+     */
+    function getOrderMaker(bytes32 orderHash) external view returns (address);
+
+    /**
+     * @notice Whether this order hash is still indexed as active.
+     */
+    function orderExists(bytes32 orderHash) external view returns (bool);
 }
