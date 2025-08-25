@@ -4,416 +4,244 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+
 import "./interfaces/IRouter.sol";
 import "./interfaces/IClobFactory.sol";
 import "./interfaces/IClobPair.sol";
 import "./libraries/OrderStructs.sol";
 
-/**
- * @title Router
- * @notice Main entry point for users to interact with the CLOB DEX
- * @dev Handles EIP-712 signature validation and routes orders to appropriate ClobPair contracts
- */
 contract Router is IRouter, EIP712, ReentrancyGuard {
     using ECDSA for bytes32;
 
-    // ---- Constants ----
-    bytes32 private constant LIMIT_ORDER_TYPEHASH = keccak256(
-        "LimitOrder(address maker,address baseToken,address quoteToken,uint64 baseAmount,uint256 price,bool isSellBase,uint256 expiry,uint256 nonce)"
-    );
-
-    bytes32 private constant CANCEL_ORDER_TYPEHASH = keccak256(
-        "CancelOrder(bytes32 orderHash,uint256 nonce)"
-    );
-
-    // ---- State Variables ----
-    address public immutable factory;
-    
-    // Track user nonces for replay protection
-    mapping(address => uint256) public userNonces;
-    
-    // Store order hash to maker mapping for cancellation
-    mapping(bytes32 => address) public orderToMaker;
-
-    // ---- Events ----
-    event OrderPlaced(
-        bytes32 indexed orderHash,
-        address indexed maker,
-        address indexed clobPair,
-        OrderStructs.LimitOrder order
-    );
-
-    event OrderCancelled(
-        bytes32 indexed orderHash,
-        address indexed maker,
-        address indexed clobPair
-    );
-
-    event BatchOrdersPlaced(
-        address indexed maker,
-        uint256 orderCount
-    );
-
-    event BatchOrdersCancelled(
-        address indexed maker,
-        uint256 orderCount
-    );
-
-    event OrderFilled(
-        bytes32 indexed orderHash,
-        address indexed maker,
-        address indexed clobPair,
-        uint64 filledAmount
-    );
-
-    // ---- Constructor ----
     constructor(address _factory) EIP712("ClobRouter", "1") {
         require(_factory != address(0), "Router: invalid factory");
         factory = _factory;
     }
 
-    // ---- Modifiers ----
+    address public immutable factory;
+    mapping(address => uint256) public userNonces;
+    mapping(bytes32 => address) public orderToMaker;
+    mapping(bytes32 => address) public orderToPair;
+
+    event OrderPlaced(bytes32 indexed orderHash, address indexed maker, address indexed clobPair, OrderStructs.LimitOrder order);
+    event OrderCancelled(bytes32 indexed orderHash, address indexed maker, address indexed clobPair);
+    event OrderFilled(bytes32 indexed orderHash, address indexed maker, address indexed clobPair, uint64 filledAmount);
+    event BatchOrdersPlaced(address indexed maker, uint256 orderCount);
+    event BatchOrdersCancelled(address indexed maker, uint256 orderCount);
+    event BatchFailed(uint256 index, string reason);
+
     modifier validOrder(OrderStructs.LimitOrder calldata order) {
-        require(order.maker != address(0), "Router: invalid maker");
-        require(order.baseToken != address(0) && order.quoteToken != address(0), "Router: invalid tokens");
-        require(order.baseToken != order.quoteToken, "Router: identical tokens");
-        require(order.baseAmount > 0, "Router: zero amount");
-        require(order.price > 0, "Router: zero price");
-        require(order.expiry == 0 || order.expiry > block.timestamp, "Router: expired order");
+        OrderStructs.validateOrder(order);
         _;
     }
 
-    // ---- Internal Functions ----
     function _hashLimitOrder(OrderStructs.LimitOrder calldata order) internal view returns (bytes32) {
-        return _hashTypedDataV4(keccak256(abi.encode(
-            LIMIT_ORDER_TYPEHASH,
-            order.maker,
-            order.baseToken,
-            order.quoteToken,
-            order.baseAmount,
-            order.price,
-            order.isSellBase,
-            order.expiry,
-            order.nonce
-        )));
+        bytes32 structHash = keccak256(
+            abi.encode(
+                OrderStructs.LIMIT_ORDER_TYPEHASH,
+                order.maker,
+                order.baseToken,
+                order.quoteToken,
+                order.clobPair,
+                order.baseAmount,
+                order.price,
+                order.isSellBase,
+                order.expiry,
+                order.nonce
+            )
+        );
+        return _hashTypedDataV4(structHash);
     }
 
     function _hashCancelOrder(bytes32 orderHash, uint256 nonce) internal view returns (bytes32) {
-        return _hashTypedDataV4(keccak256(abi.encode(
-            CANCEL_ORDER_TYPEHASH,
-            orderHash,
-            nonce
-        )));
+        bytes32 structHash = keccak256(abi.encode(OrderStructs.CANCEL_ORDER_TYPEHASH, orderHash, nonce));
+        return _hashTypedDataV4(structHash);
     }
 
-    function _verifySignature(bytes32 hash, bytes calldata signature, address signer) internal pure {
-        address recoveredSigner = hash.recover(signature);
-        require(recoveredSigner == signer, "Router: invalid signature");
+    function _verifySignature(bytes32 digest, bytes calldata signature, address signer) internal pure {
+        address recovered = digest.recover(signature);
+        require(recovered == signer, "Router: invalid signature");
     }
 
-    function _getClobPair(address baseToken, address quoteToken) internal view returns (address) {
-        // Get all pairs and find the one with matching tokens
-        // We need to check both directions since tokens are canonicalized in factory
-        address[] memory allPairs = IClobFactory(factory).getAllPairs();
-        
-        for (uint256 i = 0; i < allPairs.length; i++) {
-            address pair = allPairs[i];
-            (address pairBase, address pairQuote,) = IClobPair(pair).getPairInfo();
-            
-            if ((pairBase == baseToken && pairQuote == quoteToken) ||
-                (pairBase == quoteToken && pairQuote == baseToken)) {
-                return pair;
-            }
-        }
-        
-        revert("Router: pair not found");
-    }
-
-    function _findClobPair(address baseToken, address quoteToken) 
-        internal 
-        view 
-        returns (address clobPair) 
+    function _findClobPairForPrice(address baseToken, address quoteToken, uint256 price)
+        internal
+        view
+        returns (address clobPair)
     {
-        // Get all pairs and find the one with matching tokens
         address[] memory allPairs = IClobFactory(factory).getAllPairs();
-        
+        address best = address(0);
+        uint256 bestTick = 0;
+
         for (uint256 i = 0; i < allPairs.length; i++) {
-            address pair = allPairs[i];
-            (address pairBase, address pairQuote,) = IClobPair(pair).getPairInfo();
-            
-            if ((pairBase == baseToken && pairQuote == quoteToken) ||
-                (pairBase == quoteToken && pairQuote == baseToken)) {
-                return pair;
+            (address pBase, address pQuote, uint256 tick) = IClobPair(allPairs[i]).getPairInfo();
+            if (pBase != baseToken || pQuote != quoteToken) continue;
+            if (price % tick != 0) continue;
+
+            try IClobPair(allPairs[i]).getPriceLevel(price) returns (uint64, uint64) {
+                if (tick > bestTick) {
+                    bestTick = tick;
+                    best = allPairs[i];
+                }
+            } catch {
+                // Skip invalid pair
             }
         }
-        
-        revert("Router: pair not found");
+
+        require(best != address(0), "Router: pair not found");
+        return best;
     }
 
-    // ---- Public Functions ----
-    
-    /**
-     * @notice Place a limit order with signature validation
-     */
     function placeLimitOrder(
         OrderStructs.LimitOrder calldata order,
         bytes calldata signature
     ) external override nonReentrant validOrder(order) returns (bytes32 orderHash) {
-        // Hash and validate order
-        orderHash = _hashLimitOrder(order);
-        
-        // Verify the maker is the message sender or signature is valid
         if (order.maker != msg.sender) {
             require(signature.length > 0, "Router: signature required");
-            _verifySignature(orderHash, signature, order.maker);
+            _verifySignature(_hashLimitOrder(order), signature, order.maker);
         }
 
-        // Verify and update nonce
         require(order.nonce >= userNonces[order.maker], "Router: invalid nonce");
         userNonces[order.maker] = order.nonce + 1;
 
-        // Find the appropriate ClobPair
-        address clobPair = _findClobPair(order.baseToken, order.quoteToken);
-        
-        // Verify price matches pair's tick size
-        (, , uint256 pairTickSize) = IClobPair(clobPair).getPairInfo();
-        require(order.price % pairTickSize == 0, "Router: invalid price tick");
+        address clobPair = order.clobPair != address(0) ? order.clobPair : _findClobPairForPrice(order.baseToken, order.quoteToken, order.price);
+        (address pairBaseToken, address pairQuoteToken, ) = IClobPair(clobPair).getPairInfo();
+        require(pairBaseToken == order.baseToken && pairQuoteToken == order.quoteToken, "Router: invalid pair");
 
-        // Store order hash to maker mapping for cancellation
-        orderToMaker[orderHash] = order.maker;
+        bytes32 orderHash;
+        uint64 filledAmount;
+        (orderHash, filledAmount) = IClobPair(clobPair).placeLimitOrder(order);
 
-        // Forward order to ClobPair for matching
-        (bytes32 returnedHash, uint64 filledAmount) = IClobPair(clobPair).placeLimitOrder(order);
-        
-        emit OrderPlaced(orderHash, order.maker, clobPair, order);
-        emit OrderFilled(orderHash, order.maker, clobPair, filledAmount);
-        
+        if (filledAmount < order.baseAmount) {
+            orderToMaker[orderHash] = order.maker;
+            orderToPair[orderHash] = clobPair;
+            emit OrderPlaced(orderHash, order.maker, clobPair, order);
+        } else {
+            emit OrderFilled(orderHash, order.maker, clobPair, filledAmount);
+        }
+
         return orderHash;
     }
 
-    /**
-     * @notice Cancel an order with signature validation
-     */
     function cancelOrder(
         OrderStructs.LimitOrder calldata order,
         bytes calldata signature
     ) external override nonReentrant {
         bytes32 orderHash = _hashLimitOrder(order);
-        
-        // Verify the maker is the message sender or signature is valid
+
         if (order.maker != msg.sender) {
             require(signature.length > 0, "Router: signature required");
-            bytes32 cancelHash = _hashCancelOrder(orderHash, order.nonce);
-            _verifySignature(cancelHash, signature, order.maker);
+            _verifySignature(_hashCancelOrder(orderHash, order.nonce), signature, order.maker);
         }
 
-        // Verify order exists and get maker
         address storedMaker = orderToMaker[orderHash];
         require(storedMaker != address(0), "Router: order not found");
-        require(storedMaker == order.maker, "Router: unauthorized cancellation");
+        require(storedMaker == order.maker, "Router: unauthorized");
 
-        // Find the appropriate ClobPair
-        address clobPair = _findClobPair(order.baseToken, order.quoteToken);
+        address clobPair = orderToPair[orderHash];
+        require(clobPair != address(0), "Router: pair not found");
 
-        // Cancel order in the ClobPair
+        OrderStructs.OrderInfo memory info = IClobPair(clobPair).getOrderInfo(orderHash);
+        require(
+            info.status == OrderStructs.OrderStatus.PENDING || 
+            info.status == OrderStructs.OrderStatus.PARTIALLY_FILLED,
+            "Router: order not active"
+        );
+
         IClobPair(clobPair).cancelOrder(order);
 
-        // Clean up mapping
         delete orderToMaker[orderHash];
-
+        delete orderToPair[orderHash];
         emit OrderCancelled(orderHash, order.maker, clobPair);
     }
 
-    /**
-     * @notice Cancel order by hash (for makers only)
-     */
     function cancelOrderByHash(bytes32 orderHash) external override nonReentrant {
         address maker = orderToMaker[orderHash];
         require(maker != address(0), "Router: order not found");
-        require(maker == msg.sender, "Router: unauthorized cancellation");
+        require(maker == msg.sender, "Router: unauthorized");
 
-        // We need to find the clobPair, but we don't have the order details
-        // This is a limitation - we'd need to store more order info or iterate through pairs
-        // For now, let's revert with a helpful message
-        revert("Router: use cancelOrder with full order struct");
+        address clobPair = orderToPair[orderHash];
+        require(clobPair != address(0), "Router: pair not found");
+
+        OrderStructs.OrderInfo memory info = IClobPair(clobPair).getOrderInfo(orderHash);
+        require(
+            info.status == OrderStructs.OrderStatus.PENDING || 
+            info.status == OrderStructs.OrderStatus.PARTIALLY_FILLED,
+            "Router: order not active"
+        );
+
+        IClobPair(clobPair).cancelOrderByHashFromRouter(orderHash, maker);
+
+        delete orderToMaker[orderHash];
+        delete orderToPair[orderHash];
+        emit OrderCancelled(orderHash, maker, clobPair);
     }
 
-    /**
-     * @notice Place multiple limit orders in batch
-     */
     function batchPlaceLimitOrders(
         OrderStructs.LimitOrder[] calldata orders,
         bytes[] calldata signatures
     ) external override nonReentrant {
-        require(orders.length == signatures.length, "Router: array length mismatch");
-        require(orders.length > 0, "Router: empty arrays");
+        require(orders.length == signatures.length, "Router: length mismatch");
+        require(orders.length > 0, "Router: empty");
 
+        uint256 successCount = 0;
         for (uint256 i = 0; i < orders.length; i++) {
-            // Validate each order
-            require(orders[i].maker != address(0), "Router: invalid maker");
-            require(orders[i].baseToken != address(0) && orders[i].quoteToken != address(0), "Router: invalid tokens");
-            require(orders[i].baseToken != orders[i].quoteToken, "Router: identical tokens");
-            require(orders[i].baseAmount > 0, "Router: zero amount");
-            require(orders[i].price > 0, "Router: zero price");
-            require(orders[i].expiry == 0 || orders[i].expiry > block.timestamp, "Router: expired order");
-
-            // Process the order
-            bytes32 orderHash = _hashLimitOrder(orders[i]);
-
-            // Verify signature if not self-placing
-            if (orders[i].maker != msg.sender) {
-                require(signatures[i].length > 0, "Router: signature required");
-                _verifySignature(orderHash, signatures[i], orders[i].maker);
+            try this.placeLimitOrder(orders[i], signatures[i]) {
+                successCount++;
+            } catch Error(string memory reason) {
+                emit BatchFailed(i, reason);
             }
-
-            // Verify and update nonce
-            require(orders[i].nonce >= userNonces[orders[i].maker], "Router: invalid nonce");
-            userNonces[orders[i].maker] = orders[i].nonce + 1;
-
-            // Find appropriate ClobPair
-            address clobPair = _findClobPair(orders[i].baseToken, orders[i].quoteToken);
-
-            // Store order hash to maker mapping
-            orderToMaker[orderHash] = orders[i].maker;
-
-            // Place order - FIXED: Removed hash mismatch check
-            (bytes32 returnedHash,) = IClobPair(clobPair).placeLimitOrder(orders[i]);
-            // Removed: require(returnedHash == orderHash, "Router: hash mismatch"); // FIXED: Domain separator mismatch issue
-
-            emit OrderPlaced(orderHash, orders[i].maker, clobPair, orders[i]);
         }
-
-        emit BatchOrdersPlaced(msg.sender, orders.length);
+        emit BatchOrdersPlaced(msg.sender, successCount);
     }
 
-    /**
-     * @notice Cancel multiple orders in batch
-     */
     function batchCancelOrders(
         OrderStructs.LimitOrder[] calldata orders,
         bytes[] calldata signatures
     ) external override nonReentrant {
-        require(orders.length == signatures.length, "Router: array length mismatch");
-        require(orders.length > 0, "Router: empty arrays");
+        require(orders.length == signatures.length, "Router: length mismatch");
+        require(orders.length > 0, "Router: empty");
 
+        uint256 successCount = 0;
         for (uint256 i = 0; i < orders.length; i++) {
-            bytes32 orderHash = _hashLimitOrder(orders[i]);
-
-            // Verify signature if not self-cancelling
-            if (orders[i].maker != msg.sender) {
-                require(signatures[i].length > 0, "Router: signature required");
-                bytes32 cancelHash = _hashCancelOrder(orderHash, orders[i].nonce);
-                _verifySignature(cancelHash, signatures[i], orders[i].maker);
+            try this.cancelOrder(orders[i], signatures[i]) {
+                successCount++;
+            } catch Error(string memory reason) {
+                emit BatchFailed(i, reason);
             }
-
-            // Verify order exists
-            address storedMaker = orderToMaker[orderHash];
-            require(storedMaker != address(0), "Router: order not found");
-            require(storedMaker == orders[i].maker, "Router: unauthorized cancellation");
-
-            // Find appropriate ClobPair
-            address clobPair = _findClobPair(orders[i].baseToken, orders[i].quoteToken);
-
-            // Cancel order
-            IClobPair(clobPair).cancelOrder(orders[i]);
-
-            // Clean up mapping
-            delete orderToMaker[orderHash];
-
-            emit OrderCancelled(orderHash, orders[i].maker, clobPair);
         }
-
-        emit BatchOrdersCancelled(msg.sender, orders.length);
+        emit BatchOrdersCancelled(msg.sender, successCount);
     }
 
-    // ---- View Functions ----
+    function cleanupExpiredOrders(
+        address clobPair, 
+        uint256 price, 
+        uint64 maxOrders
+    ) external nonReentrant returns (uint64 cleaned) {
+        require(clobPair != address(0), "Router: invalid pair");
+        cleaned = IClobPair(clobPair).cleanupExpiredOrders(price, maxOrders);
+    }
 
-    /**
-     * @notice Get the factory address
-     */
     function getFactory() external view override returns (address) {
         return factory;
     }
 
-    /**
-     * @notice Get the EIP-712 domain separator
-     */
     function domainSeparator() external view override returns (bytes32) {
         return _domainSeparatorV4();
     }
 
-    /**
-     * @notice Hash a limit order for signing
-     */
     function hashOrder(OrderStructs.LimitOrder calldata order) external view override returns (bytes32) {
         return _hashLimitOrder(order);
     }
 
-    /**
-     * @notice Get user's current nonce
-     */
     function getUserNonce(address user) external view returns (uint256) {
         return userNonces[user];
     }
 
-    /**
-     * @notice Get maker address for an order hash
-     */
     function getOrderMaker(bytes32 orderHash) external view returns (address) {
         return orderToMaker[orderHash];
     }
 
-    /**
-     * @notice Check if an order exists in the router
-     */
     function orderExists(bytes32 orderHash) external view returns (bool) {
         return orderToMaker[orderHash] != address(0);
-    }
-
-    // ---- Utility Functions ----
-
-    /**
-     * @notice Find all compatible ClobPairs for a token pair
-     */
-    function getCompatiblePairs(address baseToken, address quoteToken) 
-        external 
-        view 
-        returns (address[] memory pairs) 
-    {
-        address[] memory allPairs = IClobFactory(factory).getAllPairs();
-        uint256 compatibleCount = 0;
-        
-        // Count compatible pairs first
-        for (uint256 i = 0; i < allPairs.length; i++) {
-            (address pairBase, address pairQuote,) = IClobPair(allPairs[i]).getPairInfo();
-            if ((pairBase == baseToken && pairQuote == quoteToken) ||
-                (pairBase == quoteToken && pairQuote == baseToken)) {
-                compatibleCount++;
-            }
-        }
-        
-        // Build result array
-        pairs = new address[](compatibleCount);
-        uint256 index = 0;
-        
-        for (uint256 i = 0; i < allPairs.length; i++) {
-            (address pairBase, address pairQuote,) = IClobPair(allPairs[i]).getPairInfo();
-            if ((pairBase == baseToken && pairQuote == quoteToken) ||
-                (pairBase == quoteToken && pairQuote == baseToken)) {
-                pairs[index] = allPairs[i];
-                index++;
-            }
-        }
-    }
-
-    /**
-     * @notice Get the optimal tick size for a given price
-     */
-    function getOptimalTickSize(uint256 price) external pure returns (uint256) {
-        if (price % 1e18 == 0) return 1e18;      // 1.0
-        if (price % 1e17 == 0) return 1e17;      // 0.1
-        if (price % 1e16 == 0) return 1e16;      // 0.01
-        if (price % 1e15 == 0) return 1e15;      // 0.001
-        return 1e12;                             // 0.000001 (default)
     }
 }
