@@ -1,29 +1,38 @@
+// src/components/TradingDashboard.jsx
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, Activity, Settings } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
+import { TrendingUp, TrendingDown, Activity } from 'lucide-react';
+import WalletConnection from '@/components/WalletConnection';
+import MarketStats from '@/components/MarketStats';
 import OrderBook from '@/components/OrderBook';
 import TradingForm from '@/components/TradingForm';
-// import PriceChart from '@/components/PriceChart'; // Temporarily commented out
-import MarketStats from '@/components/MarketStats';
-import RecentTrades from '@/components/RecentTrades';
-import WalletConnection from '@/components/WalletConnection';
 import UserOrders from '@/components/UserOrders';
-// import OrderHistory from '@/components/OrderHistory'; // Temporarily commented out
-import { useWeb3 } from '../hooks/useWeb3';
+import RecentTrades from '@/components/RecentTrades';
+import { useWeb3 } from '@/hooks/useWeb3';
+import { useContracts } from '@/hooks/useContracts';
 
 const TradingDashboard = () => {
-  const [selectedPair, setSelectedPair] = useState('');
-  const [currentPrice, setCurrentPrice] = useState(0);
+  const [selectedPair, setSelectedPair] = useState('');  // clob pair address
+  const [pairList, setPairList] = useState([]);          // all pairs from factory
+  const [currentPrice, setCurrentPrice] = useState(2500);
   const [priceChange, setPriceChange] = useState(0);
-  
-  const { isConnected } = useWeb3();
+
+  const { signer } = useWeb3();
+  const { getAllPairs } = useContracts(signer);
 
   useEffect(() => {
-    setCurrentPrice(2500);
-    setPriceChange(0);
-  }, []);
+    (async () => {
+      try {
+        const list = await getAllPairs();
+        setPairList(list || []);
+        if (!selectedPair && list?.length) setSelectedPair(list[0]);
+      } catch (e) {
+        console.error('load pairs failed:', e);
+        setPairList([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signer]);
 
   return (
     <div className="min-h-screen p-4 flex flex-col space-y-4">
@@ -41,9 +50,22 @@ const TradingDashboard = () => {
                 DEX Order Book
               </h1>
             </div>
-            
+
+            {/* Pair selector */}
             <div className="flex items-center space-x-2">
-              <span className="text-slate-400 text-sm">Manual Order Entry</span>
+              <span className="text-slate-400 text-sm">Pair</span>
+              <select
+                className="bg-slate-800/50 rounded px-2 py-1 text-sm text-white"
+                value={selectedPair}
+                onChange={(e) => setSelectedPair(e.target.value)}
+              >
+                {pairList.length === 0 && <option value="">No pairs</option>}
+                {pairList.map((p) => (
+                  <option key={p} value={p}>
+                    {p.slice(0, 6)}...{p.slice(-4)}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -57,7 +79,6 @@ const TradingDashboard = () => {
                 {priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}%
               </div>
             </div>
-            
             <WalletConnection />
           </div>
         </div>
@@ -68,7 +89,7 @@ const TradingDashboard = () => {
         <MarketStats currentPrice={currentPrice} />
       </div>
 
-      {/* Main Trading Interface */}
+      {/* Main */}
       <main className="flex-grow grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0">
         {/* Order Book */}
         <motion.div
@@ -77,27 +98,17 @@ const TradingDashboard = () => {
           transition={{ delay: 0.1 }}
           className="lg:col-span-1 min-h-0"
         >
-          <OrderBook currentPrice={currentPrice} />
+          <OrderBook pairAddress={selectedPair} />
         </motion.div>
 
-        {/* Price Chart - Temporarily Hidden for cleaner UI */}
-        {/* <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="lg:col-span-2 min-h-0"
-        >
-          <PriceChart selectedPair={selectedPair} currentPrice={currentPrice} />
-        </motion.div> */}
-
-        {/* Trading Form */}
+        {/* Trading Form - now tied to selectedPair */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.3 }}
           className="lg:col-span-1 min-h-0"
         >
-          <TradingForm />
+          <TradingForm pairAddress={selectedPair} />
         </motion.div>
 
         {/* User Orders */}
@@ -107,18 +118,8 @@ const TradingDashboard = () => {
           transition={{ delay: 0.4 }}
           className="lg:col-span-1 min-h-0"
         >
-          <UserOrders />
+          <UserOrders pairAddress={selectedPair} />
         </motion.div>
-
-        {/* Order History - Temporarily Hidden for cleaner UI */}
-        {/* <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.5 }}
-          className="lg:col-span-1 min-h-0"
-        >
-          <OrderHistory />
-        </motion.div> */}
       </main>
 
       {/* Recent Trades */}

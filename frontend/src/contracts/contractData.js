@@ -481,7 +481,7 @@ export const VAULT_ABI =
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "availableBalance",
+        "name": "",
         "type": "uint256"
       }
     ],
@@ -505,7 +505,7 @@ export const VAULT_ABI =
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "lockedBalance",
+        "name": "",
         "type": "uint256"
       }
     ],
@@ -529,7 +529,7 @@ export const VAULT_ABI =
     "outputs": [
       {
         "internalType": "uint256",
-        "name": "totalBalance",
+        "name": "",
         "type": "uint256"
       }
     ],
@@ -745,7 +745,8 @@ export const VAULT_ABI =
   }
 ]
 
-export const FACTORY_ABI = [
+export const FACTORY_ABI = 
+[
   {
     "inputs": [
       {
@@ -756,6 +757,47 @@ export const FACTORY_ABI = [
     ],
     "stateMutability": "nonpayable",
     "type": "constructor"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableInvalidOwner",
+    "type": "error"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "account",
+        "type": "address"
+      }
+    ],
+    "name": "OwnableUnauthorizedAccount",
+    "type": "error"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "previousOwner",
+        "type": "address"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "OwnershipTransferred",
+    "type": "event"
   },
   {
     "anonymous": false,
@@ -787,6 +829,50 @@ export const FACTORY_ABI = [
     ],
     "name": "PairCreated",
     "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "newRouter",
+        "type": "address"
+      }
+    ],
+    "name": "RouterSet",
+    "type": "event"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "addSupportedToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "executor",
+        "type": "address"
+      },
+      {
+        "internalType": "bool",
+        "name": "isAuthorized",
+        "type": "bool"
+      }
+    ],
+    "name": "authorizeExecutor",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
   },
   {
     "inputs": [
@@ -915,6 +1001,19 @@ export const FACTORY_ABI = [
     "type": "function"
   },
   {
+    "inputs": [],
+    "name": "owner",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
     "inputs": [
       {
         "internalType": "address",
@@ -941,6 +1040,79 @@ export const FACTORY_ABI = [
       }
     ],
     "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "pauseVault",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "token",
+        "type": "address"
+      }
+    ],
+    "name": "removeSupportedToken",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "renounceOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "router",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "_router",
+        "type": "address"
+      }
+    ],
+    "name": "setRouter",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "newOwner",
+        "type": "address"
+      }
+    ],
+    "name": "transferOwnership",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "unpauseVault",
+    "outputs": [],
+    "stateMutability": "nonpayable",
     "type": "function"
   },
   {
@@ -1455,30 +1627,6 @@ export const ROUTER_ABI =
     "type": "function"
   },
   {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "baseToken",
-        "type": "address"
-      },
-      {
-        "internalType": "address",
-        "name": "quoteToken",
-        "type": "address"
-      }
-    ],
-    "name": "getCompatiblePairs",
-    "outputs": [
-      {
-        "internalType": "address[]",
-        "name": "pairs",
-        "type": "address[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [],
     "name": "getFactory",
     "outputs": [
@@ -1637,6 +1785,25 @@ export const ROUTER_ABI =
       }
     ],
     "name": "orderToMaker",
+    "outputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "bytes32",
+        "name": "",
+        "type": "bytes32"
+      }
+    ],
+    "name": "orderToPair",
     "outputs": [
       {
         "internalType": "address",

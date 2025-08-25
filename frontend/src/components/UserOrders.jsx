@@ -1,284 +1,58 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { X, Clock, CheckCircle, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/use-toast';
-import { useWeb3 } from '../hooks/useWeb3';
-import { useContracts } from '../hooks/useContracts';
+import { useEffect, useState } from 'react';
 import { ethers } from 'ethers';
 
-const UserOrders = () => {
+const PAIR_ABI = [
+  "function getUserOrders(address) view returns (bytes32[])",
+  "function getOrderDetails(bytes32) view returns (bool,bool,uint256,uint64,address)"
+];
+
+const UserOrders = ({ factory, provider, user }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const { account, signer } = useWeb3();
-  const { contracts, cancelOrder } = useContracts(signer);
-
-  useEffect(() => {
-    const fetchUserOrders = async () => {
-      if (!contracts || !account) {
-        setOrders([]);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        console.log('🔍 Fetching user orders for account:', account);
-        
-        // Get OrderPlaced events for this user
-        const filter = contracts.router.filters.OrderPlaced(null, account);
-        const events = await contracts.router.queryFilter(filter, -2000); // Increased to 2000 blocks
-        
-        console.log('📋 Found OrderPlaced events:', events.length);
-        
-        const userOrders = events.map((event, index) => {
-          const args = event.args;
-          const orderData = args[3]; // Order struct
-          
-          console.log(`🔍 Processing order ${index}:`, {
-            orderHash: args[0],
-            maker: args[1], 
-            clobPair: args[2],
-            orderData: orderData,
-            baseAmount: orderData?.baseAmount?.toString(),
-            price: orderData?.price?.toString()
-          });
-          
-          // Safe parsing with validation
-          let parsedBaseAmount = '0';
-          let parsedPrice = '0';
-          
-          try {
-            if (orderData?.baseAmount) {
-              parsedBaseAmount = parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4);
-            }
-          } catch (e) {
-            console.warn('Failed to parse baseAmount:', e);
-            parsedBaseAmount = orderData?.baseAmount?.toString() || '0';
-          }
-          
-          try {
-            if (orderData?.price) {
-              parsedPrice = parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4);
-            }
-          } catch (e) {
-            console.warn('Failed to parse price:', e);
-            parsedPrice = orderData?.price?.toString() || '0';
-          }
-          
-          return {
-            id: args[0] || `order-${index}`, // orderHash
-            maker: args[1] || account,
-            clobPair: args[2] || 'Unknown',
-            baseToken: orderData?.baseToken || 'Unknown',
-            quoteToken: orderData?.quoteToken || 'Unknown', 
-            baseAmount: parsedBaseAmount,
-            amount: parsedBaseAmount, // Add amount property for UI compatibility
-            price: parsedPrice,
-            side: orderData?.isSellBase ? 'sell' : 'buy',
-            status: 'active',
-            filled: 0, // Add filled property
-            timestamp: Date.now() - (index * 60000), // Mock timestamps
-            blockNumber: event.blockNumber,
-            rawBaseAmount: orderData?.baseAmount?.toString() || '0',
-            rawPrice: orderData?.price?.toString() || '0'
-          };
-        });
-        
-        console.log('✅ Processed user orders:', userOrders);
-        setOrders(userOrders);
-        
-      } catch (error) {
-        console.error('❌ Error fetching user orders:', error);
-        setOrders([]);
-        toast({
-          title: "Lỗi tải lệnh",
-          description: "Không thể tải danh sách lệnh của bạn",
-          variant: "destructive"
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserOrders();
-    
-    // Set up real-time order updates
-    let orderPlacedListener;
-    if (contracts?.router && account) {
-      const filter = contracts.router.filters.OrderPlaced(null, account);
-      orderPlacedListener = (orderHash, maker, clobPair, orderData) => {
-        console.log('🆕 New order placed:', { orderHash, maker, clobPair, orderData });
-        
-        const newOrder = {
-          id: orderHash,
-          maker,
-          clobPair,
-          baseToken: orderData.baseToken,
-          quoteToken: orderData.quoteToken,
-          baseAmount: parseFloat(ethers.formatUnits(orderData.baseAmount, 6)).toFixed(4),
-          price: parseFloat(ethers.formatUnits(orderData.price, 18)).toFixed(4),
-          side: orderData.isSellBase ? 'sell' : 'buy',
-          status: 'active',
-          timestamp: Date.now(),
-          blockNumber: 'pending',
-          rawBaseAmount: orderData.baseAmount.toString(),
-          rawPrice: orderData.price.toString()
-        };
-        
-        setOrders(prev => [newOrder, ...prev]);
-        
-        toast({
-          title: "✅ Lệnh đã được đặt",
-          description: `${newOrder.side.toUpperCase()} ${newOrder.baseAmount} tokens tại giá ${newOrder.price}`,
-        });
-      };
-      
-      contracts.router.on(filter, orderPlacedListener);
-    }
-    
-    return () => {
-      if (orderPlacedListener && contracts?.router) {
-        contracts.router.off('OrderPlaced', orderPlacedListener);
-      }
-    };
-  }, [contracts, account]);
-
-  const handleCancelOrder = async (order) => {
+  const load = async () => {
+    if (!factory || !provider || !user) { setOrders([]); return; }
     try {
-      await cancelOrder(order);
-      toast({
-        title: "Lệnh đã được hủy",
-        description: `Đã hủy lệnh ${order.side} ${order.amount} ${order.baseToken}`,
-      });
-      
-      // Remove from local state
-      setOrders(prev => prev.filter(o => o.id !== order.id));
-    } catch (error) {
-      console.error('Error cancelling order:', error);
-      toast({
-        title: "Lỗi khi hủy lệnh",
-        description: error.message || "Có lỗi xảy ra khi hủy lệnh",
-        variant: "destructive"
-      });
+      setLoading(true);
+      const pairs = await factory.getAllPairs();
+      const out = [];
+      for (const p of pairs) {
+        const cp = new ethers.Contract(p, PAIR_ABI, provider);
+        const hashes = await cp.getUserOrders(user);
+        for (const h of hashes) {
+          const [exists, isBid, price, remaining, maker] = await cp.getOrderDetails(h);
+          out.push({ pair: p, hash: h, exists, isBid, price, remaining, maker });
+        }
+      }
+      setOrders(out);
+    } catch (e) {
+      console.error(e); setOrders([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'PENDING':
-        return <Clock className="h-4 w-4 text-yellow-400" />;
-      case 'PARTIALLY_FILLED':
-        return <Clock className="h-4 w-4 text-blue-400" />;
-      case 'FILLED':
-        return <CheckCircle className="h-4 w-4 text-green-400" />;
-      case 'CANCELLED':
-        return <XCircle className="h-4 w-4 text-red-400" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />;
-    }
-  };
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [factory, provider, user]);
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'PENDING':
-        return 'Chờ khớp';
-      case 'PARTIALLY_FILLED':
-        return 'Khớp một phần';
-      case 'FILLED':
-        return 'Đã khớp';
-      case 'CANCELLED':
-        return 'Đã hủy';
-      default:
-        return 'Không xác định';
-    }
-  };
-
+  if (!user) return null;
   return (
-    <div className="glass-effect rounded-xl p-4 h-full flex flex-col">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-white">Lệnh của tôi</h2>
-        <div className="text-xs text-slate-400">
-          {orders.length} lệnh
-        </div>
+    <div className="bg-slate-900/70 rounded-xl border border-slate-800 p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-white">Your Open Orders</h3>
+        <button className="text-xs text-sky-400" onClick={load} disabled={loading}>{loading ? 'Refreshing...' : 'Refresh'}</button>
       </div>
-
-      <div className="flex-1 overflow-hidden">
-        {loading ? (
-          <div className="text-center text-slate-400 py-8">
-            Đang tải...
-          </div>
-        ) : orders.length > 0 ? (
-          <div className="space-y-2 overflow-y-auto h-full">
-            <AnimatePresence>
-              {orders.map((order, index) => (
-                <motion.div
-                  key={order.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="bg-slate-800/50 rounded-lg p-3 border border-slate-700"
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-sm font-medium ${
-                        order.side === 'buy' ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {order.side === 'buy' ? 'MUA' : 'BÁN'}
-                      </span>
-                      <span className="text-white font-medium">
-                        {order.pair}
-                      </span>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusIcon(order.status)}
-                      <span className="text-xs text-slate-400">
-                        {getStatusText(order.status)}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4 text-xs text-slate-300 mb-3">
-                    <div>
-                      <div className="text-slate-500">Giá</div>
-                      <div>${order.price}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-500">Số lượng</div>
-                      <div>{(order.amount || 0)} {order.baseToken}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-500">Đã khớp</div>
-                      <div>{order.filled || 0} {order.baseToken}</div>
-                    </div>
-                    <div>
-                      <div className="text-slate-500">Còn lại</div>
-                      <div>{((order.amount || 0) - (order.filled || 0)).toFixed(4)} {order.baseToken}</div>
-                    </div>
-                  </div>
-
-                  {(order.status === 'PENDING' || order.status === 'PARTIALLY_FILLED') && (
-                    <Button
-                      onClick={() => handleCancelOrder(order)}
-                      variant="outline"
-                      size="sm"
-                      className="w-full border-red-600 text-red-400 hover:bg-red-600/10"
-                    >
-                      <X className="h-3 w-3 mr-1" />
-                      Hủy lệnh
-                    </Button>
-                  )}
-                </motion.div>
-              ))}
-            </AnimatePresence>
-          </div>
-        ) : (
-          <div className="text-center text-slate-400 py-8">
-            <div className="mb-2">Chưa có lệnh nào</div>
-            <div className="text-xs">Đặt lệnh đầu tiên để bắt đầu giao dịch</div>
-          </div>
-        )}
+      <div className="space-y-2">
+        {orders.length === 0 ? <div className="text-slate-500 text-sm">No open orders</div> :
+          orders.map(o => (
+            <div key={o.hash} className="text-xs text-slate-300 border border-slate-700/50 rounded p-2">
+              <div>Pair: {o.pair}</div>
+              <div>Hash: {o.hash}</div>
+              <div>Side: {o.isBid ? 'BUY' : 'SELL'}</div>
+              <div>Price: {o.price.toString()}</div>
+              <div>Remaining: {o.remaining.toString()}</div>
+            </div>
+          ))
+        }
       </div>
     </div>
   );

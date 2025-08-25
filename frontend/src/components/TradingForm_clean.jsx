@@ -17,12 +17,36 @@ const TradingForm = () => {
   const [price, setPrice] = useState('');
   const [amount, setAmount] = useState('');
   const [total, setTotal] = useState('');
+  const [expiryMinutes, setExpiryMinutes] = useState('60');
+  const [expiryPreset, setExpiryPreset] = useState('60'); // minutes or 'custom'
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingPair, setIsCheckingPair] = useState(false);
   const [pairStatus, setPairStatus] = useState(null);
 
   const { provider, signer, account, isConnected, chainId } = useWeb3();
   const { contracts, placeLimitOrder, hashOrder, getUserNonce } = useContracts(signer);
+
+  // Helpers: sanitize numeric inputs so users can type 100 or 0,1 naturally
+  const sanitizeDecimal = (value) => {
+    if (typeof value !== 'string') return '';
+    const normalized = value.replace(',', '.').replace(/[^0-9.]/g, '');
+    const parts = normalized.split('.');
+    if (parts.length <= 2) return normalized;
+    return `${parts[0]}.${parts.slice(1).join('')}`;
+  };
+
+  const clampDecimals = (value, maxDp) => {
+    const v = sanitizeDecimal(value);
+    if (v === '') return '';
+    if (!v.includes('.')) return v;
+    const [i, d] = v.split('.');
+    return `${i}.${d.slice(0, Math.max(0, maxDp))}`;
+  };
+
+  const sanitizeInteger = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.replace(/[^0-9]/g, '');
+  };
 
   useEffect(() => {
     if (orderType === 'limit') {
@@ -35,18 +59,24 @@ const TradingForm = () => {
   }, [orderType, side]);
 
   const handleAmountChange = (value) => {
-    setAmount(value);
-    if (value && price) {
-      setTotal((parseFloat(value) * parseFloat(price)).toFixed(2));
+    const clean = clampDecimals(value, 6);
+    setAmount(clean);
+    const p = sanitizeDecimal(price);
+    if (clean && p) {
+      const next = (Number(clean) * Number(p));
+      if (!Number.isNaN(next) && Number.isFinite(next)) setTotal(next.toFixed(2)); else setTotal('');
     } else {
       setTotal('');
     }
   };
 
   const handleTotalChange = (value) => {
-    setTotal(value);
-    if (value && price) {
-      setAmount((parseFloat(value) / parseFloat(price)).toFixed(6));
+    const clean = clampDecimals(value, 2);
+    setTotal(clean);
+    const p = sanitizeDecimal(price);
+    if (clean && p) {
+      const next = (Number(clean) / Number(p));
+      if (!Number.isNaN(next) && Number.isFinite(next)) setAmount(next.toFixed(6)); else setAmount('');
     } else {
       setAmount('');
     }
@@ -172,6 +202,15 @@ const TradingForm = () => {
 
       const nonce = await getUserNonce(account);
 
+      const minutes = (() => {
+        if (expiryPreset !== 'custom') {
+          const fixed = Number(expiryPreset);
+          return Number.isFinite(fixed) ? fixed : 60;
+        }
+        const m = Number(sanitizeInteger(expiryMinutes || '0'));
+        return Number.isFinite(m) ? m : 60;
+      })();
+
       const order = createLimitOrder(
         account,
         baseTokenAddress,
@@ -179,7 +218,7 @@ const TradingForm = () => {
         amount,
         price,
         side === 'sell',
-        getOrderExpiry(60),
+        minutes === 0 ? 0 : getOrderExpiry(minutes),
         nonce
       );
 
@@ -393,7 +432,7 @@ const TradingForm = () => {
               type="number"
               step="0.01"
               value={price}
-              onChange={(e) => setPrice(e.target.value)}
+              onChange={(e) => setPrice(clampDecimals(e.target.value, 8))}
               className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400"
               placeholder="0.00"
               required
@@ -461,6 +500,40 @@ const TradingForm = () => {
           <div className="text-xs text-slate-400 mt-1">
             Available: 10,000.00 Quote
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Expiry
+          </label>
+          <div className="flex items-center space-x-2">
+            <select
+              value={expiryPreset}
+              onChange={(e) => {
+                const val = e.target.value;
+                setExpiryPreset(val);
+                if (val !== 'custom') setExpiryMinutes(val);
+              }}
+              className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              <option value="60">1 hour</option>
+              <option value="1440">1 day</option>
+              <option value="4320">3 days</option>
+              <option value="10080">7 days</option>
+              <option value="40320">28 days</option>
+              <option value="custom">Custom</option>
+            </select>
+            {expiryPreset === 'custom' && (
+              <input
+                type="text"
+                value={expiryMinutes}
+                onChange={(e) => setExpiryMinutes(sanitizeInteger(e.target.value))}
+                className="flex-1 bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-mono"
+                placeholder="Minutes (0 = GTC)"
+              />
+            )}
+          </div>
+          <div className="text-xs text-slate-500 mt-1">0 = Good-Till-Cancel (GTC)</div>
         </div>
 
         <div className="flex-1"></div>
